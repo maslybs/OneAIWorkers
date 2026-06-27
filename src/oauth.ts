@@ -35,14 +35,14 @@ export async function ensureOAuthSchema(env: Env): Promise<void> {
   if (!env.OAUTH_DB) return;
   if (!schemaReady) {
     schemaReady = (async () => {
-      await env.OAUTH_DB!.exec(`
-        CREATE TABLE IF NOT EXISTS oauth_clients (
+      const statements = [
+        `CREATE TABLE IF NOT EXISTS oauth_clients (
           client_id TEXT PRIMARY KEY,
           client_name TEXT,
           redirect_uris TEXT NOT NULL,
           created_at INTEGER NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS oauth_codes (
+        )`,
+        `CREATE TABLE IF NOT EXISTS oauth_codes (
           code TEXT PRIMARY KEY,
           client_id TEXT NOT NULL,
           redirect_uri TEXT NOT NULL,
@@ -52,19 +52,23 @@ export async function ensureOAuthSchema(env: Env): Promise<void> {
           scope TEXT,
           expires_at INTEGER NOT NULL,
           created_at INTEGER NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS oauth_tokens (
+        )`,
+        `CREATE TABLE IF NOT EXISTS oauth_tokens (
           token TEXT PRIMARY KEY,
           client_id TEXT NOT NULL,
           resource TEXT,
           scope TEXT,
           expires_at INTEGER NOT NULL,
           created_at INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires_at ON oauth_codes(expires_at);
-        CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expires_at ON oauth_tokens(expires_at);
-      `);
-    })();
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires_at ON oauth_codes(expires_at)`,
+        `CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expires_at ON oauth_tokens(expires_at)`,
+      ];
+      for (const sql of statements) await env.OAUTH_DB!.prepare(sql).run();
+    })().catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
   }
   await schemaReady;
 }
@@ -94,16 +98,24 @@ export function protectedResourceMetadata(baseUrl: string) {
 
 export async function handleOAuthRegister(request: Request, env: Env): Promise<Response> {
   if (!env.OAUTH_DB) return oauthError("OAuth storage is not configured.", 500);
-  await ensureOAuthSchema(env);
 
   const body = await readBody(request);
   const redirectUris = stringArray(body.redirect_uris);
   const clientName = stringValue(body.client_name || body.software_id || "MCP Client");
-
   const clientId = `oneaiworkers-client-${crypto.randomUUID()}`;
-  await env.OAUTH_DB.prepare(
-    "INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES (?, ?, ?, ?)",
-  ).bind(clientId, clientName, JSON.stringify(redirectUris), nowSeconds()).run();
+
+  // Dynamic client registration should be resilient. If D1 schema creation or
+  // insert fails transiently, /oauth/authorize can still create the client later
+  // via getOrCreateClient using the returned client_id and redirect_uri.
+  try {
+    await ensureOAuthSchema(env);
+    await env.OAUTH_DB.prepare(
+      "INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES (?, ?, ?, ?)",
+    ).bind(clientId, clientName, JSON.stringify(redirectUris), nowSeconds()).run();
+  } catch {
+    // Do not fail registration. The OAuth authorization step will retry schema
+    // creation and create the client if needed.
+  }
 
   return jsonResponse({
     client_id: clientId,
