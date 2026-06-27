@@ -60,10 +60,31 @@ export default {
         return json({
           name: env.HUB_NAME || "OneAIWorkers",
           description: bilingualObject(
-            "Personal remote MCP server for LLM-triggered automations on Cloudflare Workers.",
-            "Персональний remote MCP server для LLM-автоматизацій на Cloudflare Workers.",
+            "Secure remote MCP gateway for connecting ChatGPT to user-owned HTTP APIs through saved connector manifests on Cloudflare Workers.",
+            "Безпечний remote MCP gateway для підключення ChatGPT до HTTP API користувача через збережені connector manifests на Cloudflare Workers.",
           ),
           mcp_endpoint: `${baseUrl}/mcp`,
+          recommended_first_tools: ["connector_setup_status", "list_connectors", "test_connector", "call_connector_tool"],
+          connector_engine: {
+            storage: "D1",
+            supported_http_methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+            supports_path_templates: true,
+            supports_query_templates: true,
+            supports_json_body_templates: true,
+            supported_auth: [
+              "none",
+              "bearer_secret",
+              "auth_header_secret",
+              "api_key_header_secret",
+              "api_key_query_secret",
+              "basic_secret",
+              "basic_secret_pair",
+              "oauth2_client_credentials",
+              "oauth2_refresh_token",
+              "google_oauth2_refresh_token",
+            ],
+            response_format: "structuredContent plus compact JSON summary/json_preview",
+          },
           oauth: isOAuthEnabled(env)
             ? {
                 enabled: true,
@@ -93,13 +114,13 @@ export default {
           ],
           authentication: isOAuthEnabled(env)
             ? bilingualObject(
-                "OAuth is enabled. MCP also accepts MCP_SHARED_SECRET if configured.",
-                "OAuth увімкнено. MCP також приймає MCP_SHARED_SECRET, якщо він заданий.",
+                "OAuth is enabled. For private deployments, OAuth authorization requires MCP_SHARED_SECRET. Manual API access should use Authorization: Bearer or x-oneaiworkers-token, not URL query secrets.",
+                "OAuth увімкнено. Для приватних розгортань OAuth authorization вимагає MCP_SHARED_SECRET. Ручний API доступ має використовувати Authorization: Bearer або x-oneaiworkers-token, не secrets у URL.",
               )
             : env.MCP_SHARED_SECRET
               ? bilingualObject(
-                  "MCP endpoint expects a shared secret via Bearer token, x-oneaiworkers-token, or ?key=.",
-                  "MCP endpoint очікує shared secret через Bearer token, x-oneaiworkers-token або ?key=.",
+                  "MCP endpoint expects a shared secret via Authorization: Bearer or x-oneaiworkers-token.",
+                  "MCP endpoint очікує shared secret через Authorization: Bearer або x-oneaiworkers-token.",
                 )
               : bilingualObject(
                   "No auth configured. Consider using OAuth or MCP_SHARED_SECRET for private deployments.",
