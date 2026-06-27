@@ -2,7 +2,7 @@
   "name": "oneaiworkers",
   "version": "0.2.0",
   "private": false,
-  "description": "EN: A small Cloudflare Worker remote MCP server for LLM-triggered actions. UK: Невеликий Cloudflare Worker remote MCP server для дій, які викликає LLM.",
+  "description": "A small Cloudflare Worker remote MCP server for LLM-triggered actions.",
   "type": "module",
   "license": "MIT",
   "scripts": {

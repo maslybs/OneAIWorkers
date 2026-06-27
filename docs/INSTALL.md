@@ -1,66 +1,56 @@
-# Install guide / Інструкція встановлення
+# Install guide
 
-## English
+[Ukrainian version](INSTALL.uk.md)
 
 OneAIWorkers is a personal Cloudflare Worker MCP server.
 
 It does not require KV, D1, databases, queues, or Cloudflare cron. Your LLM is expected to handle memory, scheduling, and decisions.
 
-## Українською
-
-OneAIWorkers — це персональний Cloudflare Worker MCP server.
-
-Він не потребує KV, D1, баз даних, queues або Cloudflare cron. Очікується, що ваша LLM сама відповідає за памʼять, розклад і рішення.
-
----
-
-## Option A: Deploy to Cloudflare button / Варіант A: кнопка Deploy to Cloudflare
+## Option A: Deploy to Cloudflare button
 
 This is the easiest path for non-technical users.
 
-Це найпростіший шлях для нетехнічних користувачів.
+1. Open the repository README.
+2. Click **Deploy to Cloudflare**.
+3. Sign in to Cloudflare.
+4. Let Cloudflare create or import and deploy the Worker.
+5. Copy your deployed `/mcp` URL.
+6. Connect it to ChatGPT or another MCP client.
 
-1. Open the repository README. / Відкрийте README репозиторію.
-2. Click **Deploy to Cloudflare**. / Натисніть **Deploy to Cloudflare**.
-3. Sign in to Cloudflare. / Увійдіть у Cloudflare.
-4. Let Cloudflare create/import and deploy the Worker. / Дайте Cloudflare створити/import і задеплоїти Worker.
-5. Copy your deployed `/mcp` URL. / Скопіюйте задеплоєний `/mcp` URL.
-6. Connect it to ChatGPT or another MCP client. / Підключіть його до ChatGPT або іншого MCP-клієнта.
+More details: [`DEPLOY_TO_CLOUDFLARE.md`](DEPLOY_TO_CLOUDFLARE.md).
 
-More details: [`docs/DEPLOY_TO_CLOUDFLARE.md`](DEPLOY_TO_CLOUDFLARE.md).
+## Option B: Manual install
 
-## Option B: Manual install / Варіант B: ручне встановлення
+### 1. Requirements
 
-### 1. Requirements / Вимоги
+You need:
 
-You need: / Вам потрібно:
+- a Cloudflare account;
+- Node.js 20+;
+- Wrangler login with `npx wrangler login`;
+- a ChatGPT account with connector/developer mode support, or another remote MCP client.
 
-- a Cloudflare account; / Cloudflare account;
-- Node.js 20+; / Node.js 20+;
-- Wrangler login (`npx wrangler login`); / login у Wrangler (`npx wrangler login`);
-- a ChatGPT account with connector/developer mode support, or another remote MCP client. / ChatGPT account із підтримкою connector/developer mode або інший remote MCP client.
-
-### 2. Install dependencies / Встановити залежності
+### 2. Install dependencies
 
 ```bash
 npm install
 ```
 
-### 3. Login to Cloudflare / Увійти в Cloudflare
+### 3. Login to Cloudflare
 
 ```bash
 npx wrangler login
 ```
 
-### 4. Optional but recommended: add a shared secret / Опційно, але рекомендовано: додайте shared secret
+### 4. Optional but recommended: add a shared secret
 
-For private personal use, set a secret: / Для приватного персонального використання задайте secret:
+For private personal use, set a secret:
 
 ```bash
 npx wrangler secret put MCP_SHARED_SECRET
 ```
 
-Then connect to: / Потім підключайтесь до:
+Then connect to:
 
 ```text
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
@@ -68,9 +58,7 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
 
 This is intentionally simple. For a public app, use real OAuth or Cloudflare Access.
 
-Це спеціально простий варіант. Для публічного додатку використовуйте справжній OAuth або Cloudflare Access.
-
-### 5. Optional notification secrets / Опційні secrets для повідомлень
+### 5. Optional notification secrets
 
 #### Telegram
 
@@ -91,7 +79,7 @@ npx wrangler secret put DISCORD_WEBHOOK_URL
 npx wrangler secret put SLACK_WEBHOOK_URL
 ```
 
-#### Generic webhook / Generic webhook
+#### Generic webhook
 
 ```bash
 npx wrangler secret put DEFAULT_WEBHOOK_URL
@@ -99,19 +87,15 @@ npx wrangler secret put DEFAULT_WEBHOOK_URL
 
 Generic webhooks are useful for Make, Zapier, n8n, Discord, Slack, or your own endpoint.
 
-Generic webhooks корисні для Make, Zapier, n8n, Discord, Slack або власного endpoint.
-
-### 6. Optional child Worker factory / Опційна factory дочірніх Worker
+### 6. Optional child Worker factory
 
 Only configure this if you want the MCP tool `create_child_worker_from_template` to deploy safe child Workers.
-
-Налаштовуйте це тільки якщо хочете, щоб MCP tool `create_child_worker_from_template` деплоїв безпечні дочірні Workers.
 
 ```bash
 npx wrangler secret put CF_API_TOKEN
 ```
 
-In `wrangler.toml` or dashboard variables: / У `wrangler.toml` або dashboard variables:
+In `wrangler.toml` or dashboard variables:
 
 ```toml
 CF_ACCOUNT_ID = "your-cloudflare-account-id"
@@ -120,63 +104,57 @@ CF_WORKERS_DEV_SUBDOMAIN = "your-workers-dev-subdomain"
 
 The Cloudflare API token should have the minimum permissions needed to edit Workers in the target account. Do not use your global API key.
 
-Cloudflare API token має мати мінімальні permissions, потрібні для редагування Workers у цільовому account. Не використовуйте global API key.
-
-### 7. Local development / Локальна розробка
+### 7. Local development
 
 ```bash
 npm run dev
 ```
 
-Local MCP endpoint: / Локальний MCP endpoint:
+Local MCP endpoint:
 
 ```text
 http://localhost:8787/mcp
 ```
 
-You can test with MCP Inspector: / Можна тестувати через MCP Inspector:
+You can test with MCP Inspector:
 
 ```bash
 npm run inspect
 ```
 
-### 8. Deploy / Деплой
+### 8. Deploy
 
 ```bash
 npm run deploy
 ```
 
-After deploy, open: / Після деплою відкрийте:
+After deploy, open:
 
 ```text
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/
 ```
 
-Your MCP endpoint is: / Ваш MCP endpoint:
+Your MCP endpoint is:
 
 ```text
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
 
-## Connect to ChatGPT / Підключення до ChatGPT
+## Connect to ChatGPT
 
-In ChatGPT developer mode: / У ChatGPT developer mode:
+In ChatGPT developer mode:
 
-1. Open Settings. / Відкрийте Settings.
-2. Go to Apps & Connectors. / Перейдіть в Apps & Connectors.
-3. Enable Developer mode if available. / Увімкніть Developer mode, якщо він доступний.
-4. Create a connector. / Створіть connector.
-5. Use your public Worker `/mcp` URL. / Вкажіть публічний `/mcp` URL вашого Worker.
-6. Refresh tool metadata after deployments. / Оновлюйте tool metadata після деплоїв.
+1. Open Settings.
+2. Go to Apps & Connectors.
+3. Enable Developer mode if available.
+4. Create a connector.
+5. Use your public Worker `/mcp` URL.
+6. Refresh tool metadata after deployments.
 
 If you set `MCP_SHARED_SECRET`, add `?key=YOUR_SECRET` to the connector URL unless your client supports Bearer tokens.
 
-Якщо ви задали `MCP_SHARED_SECRET`, додайте `?key=YOUR_SECRET` до connector URL, якщо ваш клієнт не підтримує Bearer tokens.
-
-## First prompt / Перший prompt
+## First prompt
 
 ```text
 Use OneAIWorkers. Show me what tools are available and suggest three practical automations I can run on a schedule using your own LLM memory.
-
-Використай OneAIWorkers. Покажи, які tools доступні, і запропонуй три практичні автоматизації, які можна запускати по розкладу з твоєю власною LLM-памʼяттю.
 ```

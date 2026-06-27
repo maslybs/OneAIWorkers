@@ -1,5 +1,5 @@
-# EN: Copy to .dev.vars for local development with `npm run dev`. Do not commit real secrets.
-# UK: Скопіюйте в .dev.vars для локальної розробки через `npm run dev`. Не комітьте реальні secrets.
+# Copy to .dev.vars for local development with `npm run dev`.
+# Do not commit real secrets.
 
 MCP_SHARED_SECRET=change-me
 PUBLIC_BASE_URL=http://localhost:8787
@@ -10,8 +10,7 @@ PUBLIC_BASE_URL=http://localhost:8787
 # SLACK_WEBHOOK_URL=
 # DEFAULT_WEBHOOK_URL=
 
-# EN: Only needed for child Worker factory.
-# UK: Потрібно тільки для factory дочірніх Worker.
+# Only needed for child Worker factory:
 # CF_ACCOUNT_ID=
 # CF_API_TOKEN=
 # CF_WORKERS_DEV_SUBDOMAIN=
