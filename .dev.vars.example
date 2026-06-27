@@ -1,31 +1,36 @@
 # Copy to .dev.vars for local development with `npm run dev`.
 # Do not commit real secrets.
+#
+# Production secrets are intentionally commented out here so the Cloudflare
+# Deploy Button does not ask for optional integrations during first deploy.
+# Add production secrets later in:
+# Cloudflare → Workers & Pages → your Worker → Settings → Variables and Secrets.
 
-# Recommended. Used to protect OAuth connection and manual access.
-MCP_SHARED_SECRET=
+# Recommended after deploy. Protects OAuth connection and manual access.
+# MCP_SHARED_SECRET=
 
-PUBLIC_BASE_URL=http://localhost:8787
+# Optional. Use only if your MCP client needs a fixed public URL.
+# PUBLIC_BASE_URL=http://localhost:8787
 
-# Optional. Fill only if you want Telegram messages.
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
+# Optional. Telegram messages.
+# TELEGRAM_BOT_TOKEN=
+# TELEGRAM_CHAT_ID=
 
-# Optional. Fill only if you want Discord messages.
-DISCORD_WEBHOOK_URL=
+# Optional. Discord messages.
+# DISCORD_WEBHOOK_URL=
 
-# Optional. Fill only if you want Slack messages.
-SLACK_WEBHOOK_URL=
+# Optional. Slack messages.
+# SLACK_WEBHOOK_URL=
 
-# Optional. Fill only if you want a default Make/Zapier/n8n/custom webhook.
-DEFAULT_WEBHOOK_URL=
+# Optional. Default Make/Zapier/n8n/custom webhook.
+# DEFAULT_WEBHOOK_URL=
 
-# Optional. Needed only for Worker Builder / child Workers.
-CF_ACCOUNT_ID=
-CF_API_TOKEN=
-CF_WORKERS_DEV_SUBDOMAIN=
+# Optional. Worker Builder / child Workers.
+# CF_ACCOUNT_ID=
+# CF_API_TOKEN=
+# CF_WORKERS_DEV_SUBDOMAIN=
 
 # Optional examples for saved custom API connectors.
-# Add your own uppercase secret names as needed.
 # CRM_API_TOKEN=
 # BILLING_API_KEY=
 # CHILD_WORKER_TOKEN=

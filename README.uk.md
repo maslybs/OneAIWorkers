@@ -146,15 +146,26 @@ OAuth-токенів
 
 Cloudflare попросить підключити ваш обліковий запис і розгорнути Worker.
 
-Під час розгортання ви можете побачити опційні поля. Їх можна залишити порожніми і додати пізніше.
+Перший deploy спеціально мінімальний. Він не має питати Telegram, Discord, Slack, Worker Builder або custom API secrets.
 
-Рекомендоване поле:
+Після deploy додайте тільки ті secrets, які вам реально потрібні, у Cloudflare:
+
+```text
+Cloudflare dashboard
+→ Workers & Pages
+→ ваш OneAIWorkers Worker
+→ Settings
+→ Variables and Secrets
+→ Add Secret
+```
+
+Рекомендовано після deploy:
 
 ```text
 MCP_SHARED_SECRET
 ```
 
-Опційні поля:
+Опційні secrets, які можна додати пізніше:
 
 ```text
 TELEGRAM_BOT_TOKEN

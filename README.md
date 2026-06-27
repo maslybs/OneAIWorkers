@@ -146,15 +146,26 @@ Click the button:
 
 Cloudflare will ask you to connect your account and deploy the Worker.
 
-During deploy you may see optional fields. You can leave them empty and add them later.
+The first deploy is intentionally minimal. It should not ask for Telegram, Discord, Slack, Worker Builder, or custom API secrets.
 
-Recommended field:
+After deploy, add only the secrets you need in Cloudflare:
+
+```text
+Cloudflare dashboard
+→ Workers & Pages
+→ your OneAIWorkers Worker
+→ Settings
+→ Variables and Secrets
+→ Add Secret
+```
+
+Recommended after deploy:
 
 ```text
 MCP_SHARED_SECRET
 ```
 
-Optional fields:
+Optional secrets you can add later:
 
 ```text
 TELEGRAM_BOT_TOKEN
