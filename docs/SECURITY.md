@@ -2,11 +2,11 @@
 
 ## English
 
-AI Action Hub gives an LLM tools that can fetch public URLs and trigger external notifications/webhooks. Treat it as real automation infrastructure.
+OneAIWorkers gives an LLM tools that can fetch public URLs and trigger external notifications/webhooks. Treat it as real automation infrastructure.
 
 ## Українською
 
-AI Action Hub дає LLM tools, які можуть отримувати публічні URL і запускати зовнішні notifications/webhooks. Ставтесь до цього як до реальної automation infrastructure.
+OneAIWorkers дає LLM tools, які можуть отримувати публічні URL і запускати зовнішні notifications/webhooks. Ставтесь до цього як до реальної automation infrastructure.
 
 ---
 
@@ -27,7 +27,7 @@ For personal use you can set `MCP_SHARED_SECRET`. The Worker accepts the secret 
 Для персонального використання можна задати `MCP_SHARED_SECRET`. Worker приймає secret через:
 
 - `Authorization: Bearer <secret>`;
-- `x-action-hub-token: <secret>`;
+- `x-oneaiworkers-token: <secret>`;
 - `?key=<secret>` or / або `?access_token=<secret>`.
 
 The query-string mode is convenient for clients that cannot set custom headers. It is not ideal for high-security production because URLs can appear in logs or browser history.

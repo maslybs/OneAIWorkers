@@ -1,13 +1,13 @@
-name = "ai-action-hub-worker"
+name = "oneaiworkers"
 main = "src/index.ts"
 compatibility_date = "2026-06-27"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-HUB_NAME = "AI Action Hub"
+HUB_NAME = "OneAIWorkers"
 # EN: PUBLIC_BASE_URL is optional. Set it after deploy if your MCP client needs a stable public URL.
 # UK: PUBLIC_BASE_URL опційний. Задайте його після деплою, якщо MCP-клієнту потрібен стабільний публічний URL.
-# PUBLIC_BASE_URL = "https://ai-action-hub-worker.your-subdomain.workers.dev"
+# PUBLIC_BASE_URL = "https://oneaiworkers.your-subdomain.workers.dev"
 
 # EN: Optional secrets, set with `npx wrangler secret put <NAME>`.
 # UK: Опційні secrets, задаються через `npx wrangler secret put <NAME>`.

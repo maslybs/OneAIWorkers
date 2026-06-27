@@ -9,7 +9,7 @@ export interface Env {
   SLACK_WEBHOOK_URL?: string;
   DEFAULT_WEBHOOK_URL?: string;
 
-  // Optional. Needed only if you want the LLM to create child Workers from templates.
+  // Optional. Needed only if the user wants the LLM to create child Workers from safe templates.
   CF_ACCOUNT_ID?: string;
   CF_API_TOKEN?: string;
   CF_WORKERS_DEV_SUBDOMAIN?: string;

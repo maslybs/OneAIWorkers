@@ -3,7 +3,7 @@ import { biInline } from "../i18n";
 import { assertSafeOutboundUrl, redactUrlForOutput } from "../security";
 import type { UrlFetchResult } from "../types";
 
-const USER_AGENT = "AI-Action-Hub-Worker/0.1 (+https://workers.cloudflare.com)";
+const USER_AGENT = "OneAIWorkers/0.2 (+https://workers.cloudflare.com)";
 const RAW_READ_MULTIPLIER = 4;
 
 export const fetchUrlSchema = {
@@ -40,8 +40,7 @@ export async function fetchUrl(args: z.infer<z.ZodObject<typeof fetchUrlSchema>>
   });
 
   const contentType = response.headers.get("content-type");
-  const rawLimit = Math.min(args.max_chars * RAW_READ_MULTIPLIER, 200_000);
-  const raw = await readTextWithLimit(response, rawLimit);
+  const raw = await readTextWithLimit(response, Math.min(args.max_chars * RAW_READ_MULTIPLIER, 200_000));
   let body = raw.text;
   if (args.extract_text && contentType?.includes("html")) body = htmlToText(body);
 
@@ -78,7 +77,6 @@ export async function checkUrlStatus(args: z.infer<z.ZodObject<typeof checkUrlSt
   const timer = setTimeout(() => controller.abort(biInline("Request timed out.", "Час очікування запиту вичерпано.")), args.timeout_ms);
   try {
     const response = await fetch(url, { method: "GET", redirect: "follow", signal: controller.signal });
-    const elapsedMs = Date.now() - started;
     const expected = args.expected_status;
     return {
       url: redactUrlForOutput(url),
@@ -86,7 +84,7 @@ export async function checkUrlStatus(args: z.infer<z.ZodObject<typeof checkUrlSt
       status: response.status,
       ok: expected ? response.status === expected : response.ok,
       expected_status: expected ?? null,
-      elapsed_ms: elapsedMs,
+      elapsed_ms: Date.now() - started,
       content_type: response.headers.get("content-type"),
     };
   } finally {

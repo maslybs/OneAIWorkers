@@ -1,4 +1,6 @@
-# AI Action Hub Worker
+# OneAIWorkers
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
 
 ## English
 
@@ -11,9 +13,7 @@ LLM = memory + schedule + reasoning
 Worker = safe action executor
 ```
 
-You deploy one Worker, connect its `/mcp` URL to ChatGPT or another MCP client, and let your scheduled LLM call a small set of useful actions.
-
-This project does **not** promise that AI can safely automate everything. It gives your AI controlled tools for simple, practical workflows.
+This repository uses a maintainable TypeScript structure. The main Worker entrypoint is `src/index.ts`; tools are split into focused modules. The project is meant to be installable by technical users while still giving non-technical users a clear setup path through the Deploy to Cloudflare button or copy/paste commands.
 
 ## Українською
 
@@ -26,38 +26,65 @@ LLM = памʼять + розклад + reasoning
 Worker = безпечний executor дій
 ```
 
-Ви деплоїте один Worker, підключаєте його `/mcp` URL до ChatGPT або іншого MCP-клієнта, і ваша scheduled LLM викликає невеликий набір корисних дій.
-
-Цей проєкт **не обіцяє**, що AI може безпечно автоматизувати все. Він дає вашому AI контрольовані tools для простих практичних workflow.
+Репозиторій використовує підтримувану TypeScript-структуру. Основний entrypoint — `src/index.ts`; tools розділені на окремі модулі. Проєкт має бути зручним для технічних користувачів і водночас мати зрозумілий setup для нетехнічних через Deploy to Cloudflare button або copy/paste команди.
 
 ---
 
-## What it can do / Що він вміє
+## Easiest install / Найпростіше встановлення
 
-### Observe / Спостерігати
+Click **Deploy to Cloudflare** at the top of this README. Cloudflare will clone the public repo into the user's GitHub/GitLab account, configure Workers Builds, and deploy the Worker to the user's Cloudflare account.
 
-- Fetch a public web page and return clean text. / Отримати публічну web page і повернути чистий текст.
-- Fetch several public URLs in one call. / Отримати кілька публічних URL за один виклик.
-- Read RSS/Atom feeds. / Читати RSS/Atom feeds.
-- Check whether a public website/API is reachable. / Перевіряти, чи доступний публічний сайт/API.
+Натисніть **Deploy to Cloudflare** на початку README. Cloudflare склонує public repo в GitHub/GitLab акаунт користувача, налаштує Workers Builds і задеплоїть Worker у Cloudflare account користувача.
 
-### Act / Діяти
+After deployment, connect this MCP URL to ChatGPT or another MCP client:
 
-- Send notifications to Telegram, Discord, Slack, or a generic webhook. / Надсилати повідомлення в Telegram, Discord, Slack або generic webhook.
-- Call Make, Zapier, n8n, Discord, Slack, or custom HTTPS webhooks. / Викликати Make, Zapier, n8n, Discord, Slack або власні HTTPS webhooks.
+```text
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
+```
 
-### Optional Worker factory / Опційна Worker factory
+Після деплою підключіть цей MCP URL до ChatGPT або іншого MCP-клієнта:
 
-- Deploy a child Cloudflare Worker from a safe template. / Деплоїти дочірній Cloudflare Worker з безпечного template.
-- Current template: `webhook-forwarder`. / Поточний template: `webhook-forwarder`.
-- Arbitrary JavaScript deployment is intentionally not exposed as an MCP tool. / Деплой довільного JavaScript навмисно не доступний як MCP tool.
+```text
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
+```
 
-## What it does not do / Чого він не робить
+Full guide: [`docs/DEPLOY_TO_CLOUDFLARE.md`](docs/DEPLOY_TO_CLOUDFLARE.md).
 
-- It does not store memory for the LLM. / Він не зберігає памʼять для LLM.
-- It does not include KV, D1, queues, or workflow storage. / Він не містить KV, D1, queues або workflow storage.
-- It does not accept arbitrary AI-generated JavaScript for deployment. / Він не приймає довільний AI-generated JavaScript для деплою.
-- It does not provide OAuth or multi-user SaaS security out of the box. / Він не надає OAuth або multi-user SaaS security з коробки.
+## Manual install / Ручне встановлення
+
+```bash
+npm install
+npx wrangler login
+npm run deploy
+```
+
+## Recommended private setup / Рекомендований приватний setup
+
+For private use, set a shared secret:
+
+```bash
+npx wrangler secret put MCP_SHARED_SECRET
+npm run deploy
+```
+
+Для приватного використання задайте shared secret:
+
+```bash
+npx wrangler secret put MCP_SHARED_SECRET
+npm run deploy
+```
+
+Then connect with:
+
+```text
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
+```
+
+Потім підключайтесь через:
+
+```text
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
+```
 
 ## MCP tools / MCP tools
 
@@ -72,26 +99,6 @@ call_webhook
 create_child_worker_from_template
 ```
 
-## Good first automations / Хороші перші автоматизації
-
-```text
-Every morning at 9:00, use AI Action Hub to fetch these competitor pricing pages. Keep the previous snapshot in your own memory and notify me if something important changed.
-
-Щоранку о 9:00 використовуй AI Action Hub, щоб отримати ці pricing pages конкурентів. Тримай попередній snapshot у своїй памʼяті й повідомляй мене, якщо змінилось щось важливе.
-```
-
-```text
-Every 30 minutes, check my website and contact form endpoint. If either fails twice in a row, notify me.
-
-Кожні 30 хвилин перевіряй мій сайт і endpoint контактної форми. Якщо щось падає двічі підряд, повідом мене.
-```
-
-```text
-Every Monday at 09:00, call this Make/Zapier/n8n webhook with this JSON payload. If it fails, notify me.
-
-Щопонеділка о 09:00 викликай цей Make/Zapier/n8n webhook з цим JSON payload. Якщо виклик не вдався, повідом мене.
-```
-
 ## Files / Файли
 
 ```text
@@ -100,30 +107,29 @@ src/server.ts             MCP tool registration / реєстрація MCP tools
 src/tools/observe.ts      fetch_url, fetch_rss, check_url_status
 src/tools/notify.ts       notifications and generic webhooks / notifications і generic webhooks
 src/tools/factory.ts      safe child Worker factory / безпечна factory дочірніх Workers
+src/auth.ts               MCP shared-secret auth / auth через shared secret
 src/security.ts           URL and key safety helpers / helpers для безпеки URL і ключів
-docs/INSTALL.md           setup guide / інструкція встановлення
-docs/SECURITY.md          security notes / нотатки з безпеки
-docs/TOOLS.md             tool reference / довідник tools
-examples/prompts.md       prompts for scheduled LLM usage / prompts для scheduled LLM
+src/i18n.ts               bilingual text helpers / двомовні helpers
+docs/INSTALL.md           full install guide / повна інструкція встановлення
+docs/DEPLOY_TO_CLOUDFLARE.md Deploy button guide / гайд по Deploy button
+docs/NON_TECHNICAL_USERS.md plain-language usage guide / простий гайд для нетехнічних користувачів
+docs/PROMPTS.md           ready-to-use prompts / готові prompts для користувачів
 ```
 
-## MCP endpoint / MCP endpoint
+## What it does not do / Чого він не робить
 
-After deployment your MCP endpoint will be: / Після деплою ваш MCP endpoint буде:
+- It does not store memory for the LLM. / Він не зберігає памʼять для LLM.
+- It does not include KV, D1, queues, or workflow storage. / Він не містить KV, D1, queues або workflow storage.
+- It does not accept arbitrary AI-generated JavaScript for deployment. / Він не приймає довільний AI-generated JavaScript для деплою.
+- It does not provide OAuth or multi-user SaaS security out of the box. / Він не надає OAuth або multi-user SaaS security з коробки.
 
-```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
+## Development / Розробка
+
+```bash
+npm run dev
+npm run typecheck
+npm run deploy
 ```
-
-If you configure `MCP_SHARED_SECRET`, use: / Якщо ви налаштували `MCP_SHARED_SECRET`, використовуйте:
-
-```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
-```
-
-Some MCP clients can send `Authorization: Bearer YOUR_SECRET`; some cannot. The query-string mode exists for easier personal setup, but OAuth or Cloudflare Access is a better long-term option for public usage.
-
-Деякі MCP-клієнти можуть надсилати `Authorization: Bearer YOUR_SECRET`, а деякі — ні. Query-string режим існує для простішого персонального setup, але OAuth або Cloudflare Access краще підходять для публічного використання.
 
 ## License / Ліцензія
 

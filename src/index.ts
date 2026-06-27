@@ -1,6 +1,6 @@
 import { createMcpHandler } from "agents/mcp";
 import { buildBaseUrl, isMcpAuthorized, unauthorized } from "./auth";
-import { biInline, bilingualObject } from "./i18n";
+import { bilingualObject, biInline } from "./i18n";
 import { homeHtml } from "./html";
 import { createMcpServer } from "./server";
 import type { Env } from "./types";
@@ -13,21 +13,19 @@ export default {
       const baseUrl = buildBaseUrl(request, env);
 
       if (url.pathname === "/" && request.method === "GET") {
-        return new Response(homeHtml(env, baseUrl), {
-          headers: { "content-type": "text/html; charset=utf-8" },
-        });
+        return new Response(homeHtml(env, baseUrl), { headers: { "content-type": "text/html; charset=utf-8" } });
       }
 
       if (url.pathname === "/health" && request.method === "GET") {
-        return json({ ok: true, name: env.HUB_NAME || "AI Action Hub", now: new Date().toISOString() });
+        return json({ ok: true, name: env.HUB_NAME || "OneAIWorkers", now: new Date().toISOString() });
       }
 
-      if (url.pathname === "/.well-known/action-hub" && request.method === "GET") {
+      if (url.pathname === "/.well-known/oneaiworkers" && request.method === "GET") {
         return json({
-          name: env.HUB_NAME || "AI Action Hub",
+          name: env.HUB_NAME || "OneAIWorkers",
           description: bilingualObject(
-            "Personal remote MCP Action Hub for LLM-triggered automations on Cloudflare Workers.",
-            "Персональний remote MCP Action Hub для LLM-автоматизацій на Cloudflare Workers.",
+            "Personal remote MCP server for LLM-triggered automations on Cloudflare Workers.",
+            "Персональний remote MCP server для LLM-автоматизацій на Cloudflare Workers.",
           ),
           mcp_endpoint: `${baseUrl}/mcp`,
           model: bilingualObject(
@@ -37,8 +35,8 @@ export default {
           tools: ["fetch_url", "fetch_many_urls", "fetch_rss", "check_url_status", "send_notification", "call_webhook", "create_child_worker_from_template"],
           authentication: env.MCP_SHARED_SECRET
             ? bilingualObject(
-                "MCP endpoint expects a shared secret via Bearer token, x-action-hub-token, or ?key=.",
-                "MCP endpoint очікує shared secret через Bearer token, x-action-hub-token або ?key=.",
+                "MCP endpoint expects a shared secret via Bearer token, x-oneaiworkers-token, or ?key=.",
+                "MCP endpoint очікує shared secret через Bearer token, x-oneaiworkers-token або ?key=.",
               )
             : bilingualObject(
                 "No MCP shared secret configured. Consider setting MCP_SHARED_SECRET for private deployments.",

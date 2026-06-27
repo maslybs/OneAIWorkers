@@ -2,23 +2,23 @@
 
 ## English
 
-These prompts assume your LLM can run on a schedule, keep memory between runs, and call the AI Action Hub MCP tools.
+These prompts assume your LLM can run on a schedule, keep memory between runs, and call the OneAIWorkers MCP tools.
 
 ## Українською
 
-Ці prompts припускають, що ваша LLM може запускатися по розкладу, тримати памʼять між запусками і викликати MCP tools з AI Action Hub.
+Ці prompts припускають, що ваша LLM може запускатися по розкладу, тримати памʼять між запусками і викликати MCP tools з OneAIWorkers.
 
 ---
 
 ## Competitor watcher / Моніторинг конкурентів
 
 ```text
-Every weekday at 09:00, use AI Action Hub to fetch these pricing pages: ...
+Every weekday at 09:00, use OneAIWorkers to fetch these pricing pages: ...
 Compare them with the snapshot you remember from the previous run.
 If there is a meaningful pricing, positioning, or offer change, notify me.
 Then remember the new snapshot for next time.
 
-Кожного робочого дня о 09:00 використовуй AI Action Hub, щоб отримати ці pricing pages: ...
+Кожного робочого дня о 09:00 використовуй OneAIWorkers, щоб отримати ці pricing pages: ...
 Порівняй їх зі snapshot, який ти памʼятаєш із попереднього запуску.
 Якщо є важлива зміна ціни, позиціонування або оферу, повідом мене.
 Потім запамʼятай новий snapshot для наступного разу.

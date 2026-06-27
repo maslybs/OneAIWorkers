@@ -113,16 +113,16 @@ This is optional and requires Cloudflare API credentials. It does not expose arb
 
 ```text
 LLM scheduled run
-  -> fetch/check data through AI Action Hub
+  -> fetch/check data through OneAIWorkers
   -> compare with LLM memory
   -> decide what matters
-  -> notify or call webhook through AI Action Hub
+  -> notify or call webhook through OneAIWorkers
   -> update LLM memory
 
 Scheduled запуск LLM
-  -> отримати/перевірити дані через AI Action Hub
+  -> отримати/перевірити дані через OneAIWorkers
   -> порівняти з памʼяттю LLM
   -> вирішити, що важливо
-  -> надіслати notification або викликати webhook через AI Action Hub
+  -> надіслати notification або викликати webhook через OneAIWorkers
   -> оновити памʼять LLM
 ```

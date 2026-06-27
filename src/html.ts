@@ -1,7 +1,7 @@
 import type { Env } from "./types";
 
 export function homeHtml(env: Env, baseUrl: string): string {
-  const title = env.HUB_NAME || "AI Action Hub";
+  const title = env.HUB_NAME || "OneAIWorkers";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -34,31 +34,9 @@ export function homeHtml(env: Env, baseUrl: string): string {
     </section>
   </div>
   <div class="card">
-    <h2>MCP endpoint / MCP endpoint</h2>
+    <h2>MCP endpoint</h2>
     <pre>${escapeHtml(baseUrl)}/mcp</pre>
     <p class="muted">If you configured <code>MCP_SHARED_SECRET</code>, append <code>?key=YOUR_SECRET</code> or use a Bearer token. / Якщо ви налаштували <code>MCP_SHARED_SECRET</code>, додайте <code>?key=YOUR_SECRET</code> або використовуйте Bearer token.</p>
-  </div>
-  <div class="grid">
-    <section class="card">
-      <h2>What this Worker does</h2>
-      <ul>
-        <li>Fetch public web pages, RSS feeds, and JSON APIs.</li>
-        <li>Check website/API status.</li>
-        <li>Send notifications to Telegram, Discord, Slack, or generic webhooks.</li>
-        <li>Call external HTTPS webhooks.</li>
-        <li>Optionally deploy child Workers from safe templates.</li>
-      </ul>
-    </section>
-    <section class="card">
-      <h2>Що робить цей Worker</h2>
-      <ul>
-        <li>Отримує публічні web pages, RSS feeds і JSON APIs.</li>
-        <li>Перевіряє статус сайту/API.</li>
-        <li>Надсилає повідомлення в Telegram, Discord, Slack або generic webhooks.</li>
-        <li>Викликає зовнішні HTTPS webhooks.</li>
-        <li>Опційно деплоїть дочірні Workers з безпечних templates.</li>
-      </ul>
-    </section>
   </div>
 </body>
 </html>`;

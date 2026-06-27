@@ -5,7 +5,7 @@ export function getRequestToken(request: Request): string | null {
   const auth = request.headers.get("authorization");
   if (auth?.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
 
-  const headerToken = request.headers.get("x-action-hub-token");
+  const headerToken = request.headers.get("x-oneaiworkers-token");
   if (headerToken) return headerToken.trim();
 
   const url = new URL(request.url);
@@ -20,8 +20,8 @@ export function isMcpAuthorized(request: Request, env: Env): boolean {
 export function unauthorized(env: Env): Response {
   const body = env.MCP_SHARED_SECRET
     ? biInline(
-        "Unauthorized. Provide Authorization: Bearer <token>, x-action-hub-token, or ?key=...",
-        "Немає доступу. Передайте Authorization: Bearer <token>, x-action-hub-token або ?key=...",
+        "Unauthorized. Provide Authorization: Bearer <token>, x-oneaiworkers-token, or ?key=...",
+        "Немає доступу. Передайте Authorization: Bearer <token>, x-oneaiworkers-token або ?key=...",
       )
     : biInline("Unauthorized.", "Немає доступу.");
   return new Response(body, {

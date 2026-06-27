@@ -20,7 +20,7 @@ function looksLikeIPv6(hostname: string): boolean {
   return hostname.includes(":") || hostname.startsWith("[") || hostname.endsWith("]");
 }
 
-export function assertSafeOutboundUrl(rawUrl: string, options: { allowHttp?: boolean } = {}): URL {
+export function assertSafeOutboundUrl(rawUrl: string): URL {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -28,8 +28,8 @@ export function assertSafeOutboundUrl(rawUrl: string, options: { allowHttp?: boo
     throw new Error(biInline("Invalid URL.", "Некоректний URL."));
   }
 
-  if (url.protocol !== "https:" && !(options.allowHttp && url.protocol === "http:")) {
-    throw new Error(biInline("Only HTTPS URLs are allowed by default.", "За замовчуванням дозволені тільки HTTPS URL."));
+  if (url.protocol !== "https:") {
+    throw new Error(biInline("Only HTTPS URLs are allowed.", "Дозволені тільки HTTPS URL."));
   }
 
   const hostname = url.hostname.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
@@ -54,7 +54,7 @@ export function safeKey(input: string): string {
 
 export function redactUrlForOutput(url: URL): string {
   const safe = new URL(url.toString());
-  for (const key of safe.searchParams.keys()) {
+  for (const key of [...safe.searchParams.keys()]) {
     if (/token|key|secret|password|auth|signature/i.test(key)) safe.searchParams.set(key, "[redacted]");
   }
   return safe.toString();
