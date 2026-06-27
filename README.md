@@ -4,18 +4,20 @@
 
 [Ukrainian version](README.uk.md)
 
-OneAIWorkers is a small Cloudflare Worker that exposes a remote MCP server for LLM-triggered automations.
+OneAIWorkers is a small Cloudflare Worker that gives an AI assistant a few safe actions it can use through MCP.
 
 ```text
-LLM = memory + schedule + reasoning
-Worker = safe action executor
+AI assistant = remembers, plans, decides
+Worker = does the safe actions
 ```
 
-The project uses a maintainable TypeScript structure. The main Worker entrypoint is `src/index.ts`, and tools are split into focused modules.
+The code is TypeScript and is split into small files, so it is easier to read and maintain.
 
 ## Easiest install
 
-Click **Deploy to Cloudflare** at the top of this README. Cloudflare will import the public repository, configure Workers Builds, and deploy the Worker to your Cloudflare account.
+Click **Deploy to Cloudflare** at the top of this page.
+
+Cloudflare will copy this public repository, set up the Worker, and deploy it to your Cloudflare account.
 
 After deployment, connect this MCP URL to ChatGPT or another MCP client:
 
@@ -33,9 +35,9 @@ npx wrangler login
 npm run deploy
 ```
 
-## Recommended private setup
+## Private access
 
-For private use, set a shared secret:
+For personal use, add a shared secret:
 
 ```bash
 npx wrangler secret put MCP_SHARED_SECRET
@@ -48,7 +50,7 @@ Then connect with:
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
 ```
 
-## MCP tools
+## What it can do
 
 ```text
 hub_info
@@ -61,31 +63,35 @@ call_webhook
 create_child_worker_from_template
 ```
 
-## Files
+In simple words, it can:
+
+- read public web pages;
+- read RSS feeds;
+- check if a website is working;
+- send a message to Telegram, Discord, Slack, or a webhook;
+- call a webhook in Make, Zapier, n8n, or your own system;
+- create a small child Worker from a safe template.
+
+## Main files
 
 ```text
 src/index.ts              Worker entrypoint and HTTP routes
 src/server.ts             MCP tool registration
-src/tools/observe.ts      fetch_url, fetch_rss, check_url_status
-src/tools/notify.ts       notifications and generic webhooks
-src/tools/factory.ts      safe child Worker factory
-src/auth.ts               MCP shared-secret auth
+src/tools/observe.ts      page reading, RSS, status checks
+src/tools/notify.ts       notifications and webhooks
+src/tools/factory.ts      safe child Worker creation
+src/auth.ts               shared-secret access
 src/security.ts           URL and key safety helpers
-src/i18n.ts               bilingual runtime text helpers
-docs/INSTALL.md           full install guide
-docs/DEPLOY_TO_CLOUDFLARE.md Deploy button guide
-docs/NON_TECHNICAL_USERS.md plain-language usage guide
-docs/PROMPTS.md           ready-to-use prompts
-docs/SECURITY.md          security notes
-docs/TOOLS.md             tool reference
+src/i18n.ts               runtime text helpers
+docs/                     user and developer guides
 ```
 
 ## What it does not do
 
-- It does not store memory for the LLM.
-- It does not include KV, D1, queues, or workflow storage.
-- It does not accept arbitrary AI-generated JavaScript for deployment.
-- It does not provide OAuth or multi-user SaaS security out of the box.
+- It does not store memory for the AI assistant.
+- It does not include a database.
+- It does not run arbitrary code created by AI.
+- It does not include full user accounts, billing, or OAuth.
 
 ## Development
 

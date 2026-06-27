@@ -2,94 +2,76 @@
 
 [Ukrainian version](TOOLS.uk.md)
 
-This Worker exposes a small set of MCP tools. They are designed as primitives that a scheduled LLM can combine into useful workflows.
+OneAIWorkers gives an AI assistant a small set of tools.
 
-The LLM owns memory, scheduling, and decisions. The Worker only executes controlled actions.
+The AI assistant remembers, compares, and decides. The Worker only performs the action.
 
-## Discovery
+## `hub_info`
 
-### `hub_info`
+Shows what OneAIWorkers can do and which optional services are configured.
 
-Shows what the hub can do, which optional integrations are configured, and practical first prompts.
-
-## Observe tools
+## Reading and checking
 
 ### `fetch_url`
 
-Fetches a public HTTPS URL and returns text. HTML pages are simplified into readable text by default.
+Reads one public HTTPS page and returns text.
 
-Use cases:
+Use it to:
 
 - watch a page for changes;
-- check competitor pricing;
-- read documentation or changelog pages;
-- inspect a public JSON/text endpoint.
+- check competitor prices;
+- read public documentation;
+- inspect a public JSON or text endpoint.
 
 ### `fetch_many_urls`
 
-Fetches up to 10 URLs in one call.
+Reads up to 10 public HTTPS pages in one call.
 
-Use cases:
-
-- competitor watchlists;
-- weekly research checks;
-- monitoring several landing pages.
+Use it for several pages or competitors.
 
 ### `fetch_rss`
 
-Reads RSS/Atom feeds and returns recent items.
+Reads an RSS or Atom feed and returns recent items.
 
-Use cases:
-
-- daily research digest;
-- GitHub, blog, or news monitoring;
-- industry updates.
+Use it for news, blogs, changelogs, or research.
 
 ### `check_url_status`
 
-Checks status code and response time for a public URL.
+Checks if a public URL works and how long it takes to respond.
 
-Use cases:
+Use it for website or API health checks.
 
-- uptime checks;
-- API health checks;
-- form endpoint checks.
-
-## Action tools
+## Actions
 
 ### `send_notification`
 
-Sends a message to Telegram, Discord, Slack, or a generic webhook.
+Sends a message to Telegram, Discord, Slack, or a webhook.
 
 ### `call_webhook`
 
-Calls an HTTPS webhook with a JSON payload.
+Calls an HTTPS webhook with JSON data.
 
-Use cases:
+Use it to trigger Make, Zapier, n8n, or your own system.
 
-- trigger Make, Zapier, or n8n;
-- notify a custom backend;
-- fan out an event after LLM interpretation.
-
-## Factory tools
+## Worker creation
 
 ### `create_child_worker_from_template`
 
-Deploys a child Worker from a safe predefined template.
+Creates a child Cloudflare Worker from a safe template.
 
 Current template:
 
-- `webhook-forwarder`: a small Worker that forwards POST, PUT, and PATCH requests to a configured HTTPS endpoint.
+- `webhook-forwarder`: forwards POST, PUT, and PATCH requests to a configured HTTPS endpoint.
 
-This is optional and requires Cloudflare API credentials. It does not expose arbitrary code execution.
+This is optional. It needs Cloudflare API credentials. It does not run arbitrary code.
 
-## Recommended workflow shape
+## Common workflow
 
 ```text
-LLM scheduled run
-  -> fetch/check data through OneAIWorkers
-  -> compare with LLM memory
+Scheduled AI run
+  -> read or check data with OneAIWorkers
+  -> compare with AI memory
   -> decide what matters
-  -> notify or call webhook through OneAIWorkers
-  -> update LLM memory
+  -> send a message or call a webhook
+  -> remember the result
 ```

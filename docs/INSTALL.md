@@ -2,20 +2,20 @@
 
 [Ukrainian version](INSTALL.uk.md)
 
-OneAIWorkers is a personal Cloudflare Worker MCP server.
+OneAIWorkers is a small Cloudflare Worker that gives an AI assistant safe actions through MCP.
 
-It does not require KV, D1, databases, queues, or Cloudflare cron. Your LLM is expected to handle memory, scheduling, and decisions.
+It does not need a database, queues, or Cloudflare cron. The AI assistant keeps memory and decides what to do.
 
-## Option A: Deploy to Cloudflare button
+## Option A: Deploy button
 
-This is the easiest path for non-technical users.
+This is the easiest way.
 
 1. Open the repository README.
 2. Click **Deploy to Cloudflare**.
 3. Sign in to Cloudflare.
-4. Let Cloudflare create or import and deploy the Worker.
-5. Copy your deployed `/mcp` URL.
-6. Connect it to ChatGPT or another MCP client.
+4. Wait until the Worker is deployed.
+5. Copy the `/mcp` URL.
+6. Add it to ChatGPT or another MCP client.
 
 More details: [`DEPLOY_TO_CLOUDFLARE.md`](DEPLOY_TO_CLOUDFLARE.md).
 
@@ -26,11 +26,11 @@ More details: [`DEPLOY_TO_CLOUDFLARE.md`](DEPLOY_TO_CLOUDFLARE.md).
 You need:
 
 - a Cloudflare account;
-- Node.js 20+;
-- Wrangler login with `npx wrangler login`;
-- a ChatGPT account with connector/developer mode support, or another remote MCP client.
+- Node.js 20 or newer;
+- Wrangler login;
+- ChatGPT with connector support, or another MCP client.
 
-### 2. Install dependencies
+### 2. Install packages
 
 ```bash
 npm install
@@ -42,9 +42,9 @@ npm install
 npx wrangler login
 ```
 
-### 4. Optional but recommended: add a shared secret
+### 4. Add private access
 
-For private personal use, set a secret:
+This step is optional, but recommended.
 
 ```bash
 npx wrangler secret put MCP_SHARED_SECRET
@@ -56,9 +56,11 @@ Then connect to:
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
 ```
 
-This is intentionally simple. For a public app, use real OAuth or Cloudflare Access.
+For a public app, use OAuth or Cloudflare Access instead.
 
-### 5. Optional notification secrets
+### 5. Add notification secrets
+
+Add only what you need.
 
 #### Telegram
 
@@ -85,24 +87,26 @@ npx wrangler secret put SLACK_WEBHOOK_URL
 npx wrangler secret put DEFAULT_WEBHOOK_URL
 ```
 
-Generic webhooks are useful for Make, Zapier, n8n, Discord, Slack, or your own endpoint.
+Generic webhooks are useful for Make, Zapier, n8n, Discord, Slack, or your own system.
 
-### 6. Optional child Worker factory
+### 6. Child Worker creation
 
-Only configure this if you want the MCP tool `create_child_worker_from_template` to deploy safe child Workers.
+This is optional.
+
+Use it only if you want the tool `create_child_worker_from_template` to create small child Workers.
 
 ```bash
 npx wrangler secret put CF_API_TOKEN
 ```
 
-In `wrangler.toml` or dashboard variables:
+Set these in `wrangler.toml` or in the Cloudflare dashboard:
 
 ```toml
 CF_ACCOUNT_ID = "your-cloudflare-account-id"
 CF_WORKERS_DEV_SUBDOMAIN = "your-workers-dev-subdomain"
 ```
 
-The Cloudflare API token should have the minimum permissions needed to edit Workers in the target account. Do not use your global API key.
+Use a scoped Cloudflare API token. Do not use your global API key.
 
 ### 7. Local development
 
@@ -110,7 +114,7 @@ The Cloudflare API token should have the minimum permissions needed to edit Work
 npm run dev
 ```
 
-Local MCP endpoint:
+Local MCP URL:
 
 ```text
 http://localhost:8787/mcp
@@ -128,13 +132,7 @@ npm run inspect
 npm run deploy
 ```
 
-After deploy, open:
-
-```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/
-```
-
-Your MCP endpoint is:
+Your MCP URL will look like this:
 
 ```text
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
@@ -142,19 +140,17 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 
 ## Connect to ChatGPT
 
-In ChatGPT developer mode:
-
-1. Open Settings.
-2. Go to Apps & Connectors.
-3. Enable Developer mode if available.
+1. Open ChatGPT settings.
+2. Open Apps and Connectors.
+3. Turn on developer mode if needed.
 4. Create a connector.
-5. Use your public Worker `/mcp` URL.
+5. Use your Worker `/mcp` URL.
 6. Refresh tool metadata after deployments.
 
-If you set `MCP_SHARED_SECRET`, add `?key=YOUR_SECRET` to the connector URL unless your client supports Bearer tokens.
+If you added `MCP_SHARED_SECRET`, add `?key=YOUR_SECRET` to the URL unless your client supports Bearer tokens.
 
 ## First prompt
 
 ```text
-Use OneAIWorkers. Show me what tools are available and suggest three practical automations I can run on a schedule using your own LLM memory.
+Use OneAIWorkers. Show me what tools are available and suggest three useful automations I can run on a schedule.
 ```

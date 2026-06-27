@@ -1,52 +1,55 @@
-# Встановлення через Deploy to Cloudflare
+# Розгортання в Cloudflare
 
 [Англійська версія](DEPLOY_TO_CLOUDFLARE.md)
 
-Найпростіший спосіб для нетехнічних користувачів встановити OneAIWorkers — кнопка **Deploy to Cloudflare** в README.
+Найпростіший спосіб встановити OneAIWorkers — кнопка **Розгорнути в Cloudflare** в README.
 
-Cloudflare Deploy button працює з публічним GitHub або GitLab репозиторієм. Він імпортує проєкт, налаштовує Workers Builds і деплоїть Worker у власний Cloudflare account користувача.
-
-## Кнопка деплою
-
-Публічний репозиторій:
+Вона працює з цим публічним репозиторієм GitHub:
 
 ```text
 https://github.com/maslybs/OneAIWorkers
 ```
 
-Кнопка в README використовує цей URL:
+## Що робить кнопка
+
+Коли користувач натискає кнопку, Cloudflare може:
+
+1. скопіювати проєкт;
+2. налаштувати збірку Worker;
+3. розгорнути Worker в обліковому записі Cloudflare користувача.
+
+## Код кнопки
 
 ```md
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
+[![Розгорнути в Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
 ```
 
-## Flow для користувача
+## Кроки для користувача
 
-1. Натиснути **Deploy to Cloudflare**.
+1. Натиснути **Розгорнути в Cloudflare**.
 2. Увійти в Cloudflare.
-3. Авторизувати GitHub або GitLab, якщо Cloudflare попросить.
-4. Дати Cloudflare створити або імпортувати проєкт.
-5. Дочекатися build і deploy Worker.
-6. Відкрити URL задеплоєного Worker.
-7. Скопіювати MCP endpoint.
+3. Дозволити Cloudflare доступ до GitHub або GitLab, якщо він попросить.
+4. Дочекатися розгортання Worker.
+5. Відкрити посилання на Worker.
+6. Скопіювати MCP-посилання.
 
-MCP endpoint виглядає так:
+MCP-посилання виглядає так:
 
 ```text
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
 
-## Опційний приватний доступ
+## Приватний доступ
 
-За замовчуванням Worker можна задеплоїти без secrets. Це зручно для першого тесту, але для приватного використання варто задати `MCP_SHARED_SECRET`.
+Worker може працювати без секретів. Для першого тесту цього достатньо.
 
-У Cloudflare dashboard:
+Для особистого використання додайте `MCP_SHARED_SECRET` у Cloudflare:
 
-1. Відкрити задеплоєний Worker.
-2. Перейти в **Settings**.
-3. Відкрити **Variables and Secrets**.
-4. Додати secret з назвою `MCP_SHARED_SECRET`.
-5. Зробити redeploy, якщо Cloudflare попросить.
+1. Відкрийте розгорнутий Worker.
+2. Відкрийте **Settings**.
+3. Відкрийте **Variables and Secrets**.
+4. Додайте секрет з назвою `MCP_SHARED_SECRET`.
+5. Зробіть повторне розгортання, якщо Cloudflare попросить.
 
 Після цього підключайтесь до:
 
@@ -54,13 +57,11 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
 ```
 
-## Опційні повідомлення
+## Додаткові повідомлення
 
-Notification tools працюють тільки після того, як користувач налаштує відповідні secrets.
+Повідомлення працюють тільки після того, як ви додасте потрібні секрети.
 
 ### Telegram
-
-Потрібні secrets:
 
 ```text
 TELEGRAM_BOT_TOKEN
@@ -69,36 +70,32 @@ TELEGRAM_CHAT_ID
 
 ### Discord
 
-Потрібний secret:
-
 ```text
 DISCORD_WEBHOOK_URL
 ```
 
 ### Slack
 
-Потрібний secret:
-
 ```text
 SLACK_WEBHOOK_URL
 ```
 
-### Generic webhook
-
-Потрібний secret:
+### Звичайний webhook
 
 ```text
 DEFAULT_WEBHOOK_URL
 ```
 
-Ці secrets опційні. Користувачі також можуть передати явний `webhook_url` у `send_notification` або напряму використовувати `call_webhook`, якщо MCP-клієнт це дозволяє.
+Ці секрети можна додати пізніше. Для першого тесту вони не потрібні.
 
-## Чого ця кнопка ще не вирішує
+## Чого кнопка не робить
 
-Кнопка деплоїть Worker. Вона не підключає автоматично ChatGPT, Telegram, Slack, Discord або CRM account.
+Кнопка тільки розгортає Worker.
 
-Після деплою користувачам ще потрібно:
+Вона не підключає автоматично ChatGPT, Telegram, Slack, Discord або вашу CRM.
 
-- скопіювати `/mcp` URL у MCP-клієнт;
-- додати optional secrets, якщо потрібен приватний доступ або повідомлення;
-- налаштувати CRM/API integrations, коли вони будуть додані.
+Після розгортання користувачу ще потрібно:
+
+- скопіювати `/mcp` посилання в MCP-клієнт;
+- додати додаткові секрети для приватного доступу або повідомлень;
+- додати налаштування CRM або API, коли такі інтеграції зʼявляться.

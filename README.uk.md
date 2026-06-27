@@ -1,23 +1,25 @@
 # OneAIWorkers
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
+[![Розгорнути в Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
 
 [Англійська версія](README.md)
 
-OneAIWorkers — це невеликий Cloudflare Worker, який надає remote MCP server для LLM-автоматизацій.
+OneAIWorkers — це невеликий Cloudflare Worker, який дає AI-помічнику кілька безпечних дій через MCP.
 
 ```text
-LLM = памʼять + розклад + reasoning
-Worker = безпечний executor дій
+AI-помічник = памʼятає, планує, вирішує
+Worker = виконує безпечні дії
 ```
 
-Проєкт використовує підтримувану TypeScript-структуру. Основний entrypoint Worker — `src/index.ts`, а tools розділені на окремі модулі.
+Код написаний на TypeScript і розділений на невеликі файли. Так його легше читати, перевіряти й підтримувати.
 
 ## Найпростіше встановлення
 
-Натисніть **Deploy to Cloudflare** на початку README. Cloudflare імпортує публічний репозиторій, налаштує Workers Builds і задеплоїть Worker у ваш Cloudflare account.
+Натисніть **Розгорнути в Cloudflare** на початку сторінки.
 
-Після деплою підключіть цей MCP URL до ChatGPT або іншого MCP-клієнта:
+Cloudflare скопіює цей публічний репозиторій, налаштує Worker і розгорне його у вашому обліковому записі Cloudflare.
+
+Після розгортання підключіть це MCP-посилання до ChatGPT або іншого MCP-клієнта:
 
 ```text
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
@@ -33,9 +35,9 @@ npx wrangler login
 npm run deploy
 ```
 
-## Рекомендований приватний setup
+## Приватний доступ
 
-Для приватного використання задайте shared secret:
+Для особистого використання додайте спільний секрет:
 
 ```bash
 npx wrangler secret put MCP_SHARED_SECRET
@@ -48,7 +50,7 @@ npm run deploy
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
 ```
 
-## MCP tools
+## Що він уміє
 
 ```text
 hub_info
@@ -61,31 +63,35 @@ call_webhook
 create_child_worker_from_template
 ```
 
-## Файли
+Простими словами, він може:
+
+- читати публічні вебсторінки;
+- читати RSS-стрічки;
+- перевіряти, чи працює сайт;
+- надсилати повідомлення в Telegram, Discord, Slack або у webhook;
+- викликати webhook у Make, Zapier, n8n або у вашій системі;
+- створювати невеликий дочірній Worker із безпечного шаблону.
+
+## Основні файли
 
 ```text
-src/index.ts              entrypoint Worker і HTTP routes
-src/server.ts             реєстрація MCP tools
-src/tools/observe.ts      fetch_url, fetch_rss, check_url_status
-src/tools/notify.ts       notifications і generic webhooks
-src/tools/factory.ts      безпечна factory дочірніх Workers
-src/auth.ts               auth через MCP shared secret
-src/security.ts           helpers для безпеки URL і ключів
-src/i18n.ts               helpers для runtime-текстів двома мовами
-docs/INSTALL.uk.md        повна інструкція встановлення
-docs/DEPLOY_TO_CLOUDFLARE.uk.md гайд по Deploy button
-docs/NON_TECHNICAL_USERS.uk.md простий гайд для нетехнічних користувачів
-docs/PROMPTS.uk.md        готові prompts
-docs/SECURITY.uk.md       нотатки з безпеки
-docs/TOOLS.uk.md          довідник tools
+src/index.ts              точка входу Worker і HTTP-маршрути
+src/server.ts             реєстрація MCP-інструментів
+src/tools/observe.ts      читання сторінок, RSS, перевірки стану
+src/tools/notify.ts       повідомлення і webhook
+src/tools/factory.ts      безпечне створення дочірнього Worker
+src/auth.ts               доступ через спільний секрет
+src/security.ts           допоміжні функції для безпеки URL і ключів
+src/i18n.ts               допоміжні функції для текстів під час роботи
+docs/                     інструкції для користувачів і розробників
 ```
 
 ## Чого він не робить
 
-- Він не зберігає памʼять для LLM.
-- Він не містить KV, D1, queues або workflow storage.
-- Він не приймає довільний AI-generated JavaScript для деплою.
-- Він не надає OAuth або multi-user SaaS security з коробки.
+- Він не зберігає памʼять AI-помічника.
+- Він не містить бази даних.
+- Він не виконує довільний код, створений AI.
+- Він не має повної системи користувачів, оплат або OAuth.
 
 ## Розробка
 
