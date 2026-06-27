@@ -1,0 +1,36 @@
+{
+  "name": "ai-action-hub-worker",
+  "version": "0.1.0",
+  "private": false,
+  "description": "EN: A small Cloudflare Worker remote MCP server for LLM-triggered actions. UK: Невеликий Cloudflare Worker remote MCP server для дій, які викликає LLM.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types",
+    "inspect": "npx @modelcontextprotocol/inspector@latest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "agents": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "latest",
+    "wrangler": "latest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "mcp",
+    "model-context-protocol",
+    "chatgpt",
+    "automation",
+    "llm-tools"
+  ]
+}
