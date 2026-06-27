@@ -270,6 +270,58 @@ CRM_API_TOKEN = справжній token з CRM
 
 AI може створити цей конектор через `save_connector`.
 
+### Підтримувана авторизація конекторів
+
+Connector manifests підтримують такі auth types:
+
+```text
+none
+bearer_secret
+auth_header_secret
+api_key_header_secret
+api_key_query_secret
+basic_secret
+basic_secret_pair
+oauth2_client_credentials
+oauth2_refresh_token
+google_oauth2_refresh_token
+```
+
+Використовуйте `basic_secret_pair`, коли і login/username, і password/key мають бути тільки в Cloudflare Secrets. Це корисно для API на кшталт DataForSEO:
+
+```json
+{
+  "type": "basic_secret_pair",
+  "username_secret_name": "DATAFORSEO_API_LOGIN",
+  "password_secret_name": "DATAFORSEO_API_PASSWORD"
+}
+```
+
+Використовуйте `oauth2_refresh_token` для API, де у вас уже є refresh token:
+
+```json
+{
+  "type": "oauth2_refresh_token",
+  "token_url": "https://api.example.com/oauth/token",
+  "client_id_secret_name": "EXAMPLE_CLIENT_ID",
+  "client_secret_secret_name": "EXAMPLE_CLIENT_SECRET",
+  "refresh_token_secret_name": "EXAMPLE_REFRESH_TOKEN"
+}
+```
+
+Використовуйте `google_oauth2_refresh_token` для Google APIs після того, як створите OAuth credentials і збережете refresh token у Cloudflare Secrets:
+
+```json
+{
+  "type": "google_oauth2_refresh_token",
+  "client_id_secret_name": "GOOGLE_CLIENT_ID",
+  "client_secret_secret_name": "GOOGLE_CLIENT_SECRET",
+  "refresh_token_secret_name": "GOOGLE_REFRESH_TOKEN"
+}
+```
+
+У цій версії ще немає вбудованої Google connection page. Наразі Google OAuth значення додаються як Cloudflare Secrets. Пізніше можна додати `/connect/google` сторінку і зберігати зашифровані tokens у D1.
+
 Після цього можна сказати:
 
 ```text

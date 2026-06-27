@@ -270,6 +270,58 @@ Body fields: name and email.
 
 The AI can create this connector through `save_connector`.
 
+### Supported connector authentication
+
+Connector manifests support these auth types:
+
+```text
+none
+bearer_secret
+auth_header_secret
+api_key_header_secret
+api_key_query_secret
+basic_secret
+basic_secret_pair
+oauth2_client_credentials
+oauth2_refresh_token
+google_oauth2_refresh_token
+```
+
+Use `basic_secret_pair` when both username/login and password/key must stay in Cloudflare Secrets. This is useful for APIs such as DataForSEO:
+
+```json
+{
+  "type": "basic_secret_pair",
+  "username_secret_name": "DATAFORSEO_API_LOGIN",
+  "password_secret_name": "DATAFORSEO_API_PASSWORD"
+}
+```
+
+Use `oauth2_refresh_token` for APIs where you already have a refresh token:
+
+```json
+{
+  "type": "oauth2_refresh_token",
+  "token_url": "https://api.example.com/oauth/token",
+  "client_id_secret_name": "EXAMPLE_CLIENT_ID",
+  "client_secret_secret_name": "EXAMPLE_CLIENT_SECRET",
+  "refresh_token_secret_name": "EXAMPLE_REFRESH_TOKEN"
+}
+```
+
+Use `google_oauth2_refresh_token` for Google APIs after you create OAuth credentials and store the refresh token in Cloudflare Secrets:
+
+```json
+{
+  "type": "google_oauth2_refresh_token",
+  "client_id_secret_name": "GOOGLE_CLIENT_ID",
+  "client_secret_secret_name": "GOOGLE_CLIENT_SECRET",
+  "refresh_token_secret_name": "GOOGLE_REFRESH_TOKEN"
+}
+```
+
+This version does not yet include a built-in Google connection page. For now, Google OAuth values are added as Cloudflare Secrets. A later version can add a `/connect/google` page and store encrypted tokens in D1.
+
 After that you can say:
 
 ```text

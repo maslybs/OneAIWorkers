@@ -4,6 +4,10 @@ import { assertSafeOutboundUrl, redactUrlForOutput, safeKey } from "../security"
 import type { Env } from "../types";
 
 const MAX_RESPONSE_TEXT = 24_000;
+const MAX_RESPONSE_PREVIEW_TEXT = 8_000;
+const MAX_JSON_DEPTH = 8;
+const MAX_JSON_ARRAY_ITEMS = 50;
+const MAX_JSON_OBJECT_KEYS = 80;
 const MAX_TEMPLATE_DEPTH = 20;
 
 let schemaReady: Promise<void> | null = null;
@@ -12,12 +16,19 @@ type JsonObject = Record<string, unknown>;
 
 type ConnectorMode = "internal" | "child_worker";
 
+type OAuthClientAuthMethod = "basic" | "body";
+
 type AuthConfig =
   | { type: "none" }
   | { type: "bearer_secret"; secret_name: string }
+  | { type: "auth_header_secret"; secret_name: string; scheme?: string }
   | { type: "api_key_header_secret"; secret_name: string; header_name: string }
   | { type: "api_key_query_secret"; secret_name: string; query_name: string }
-  | { type: "basic_secret"; secret_name: string; username?: string };
+  | { type: "basic_secret"; secret_name: string; username?: string }
+  | { type: "basic_secret_pair"; username_secret_name: string; password_secret_name: string }
+  | { type: "oauth2_client_credentials"; token_url: string; client_id_secret_name: string; client_secret_secret_name: string; scope?: string; audience?: string; client_auth_method?: OAuthClientAuthMethod; access_token_field?: string; token_type?: string }
+  | { type: "oauth2_refresh_token"; token_url: string; refresh_token_secret_name: string; client_id_secret_name?: string; client_secret_secret_name?: string; scope?: string; client_auth_method?: OAuthClientAuthMethod; access_token_field?: string; token_type?: string }
+  | { type: "google_oauth2_refresh_token"; client_id_secret_name: string; client_secret_secret_name: string; refresh_token_secret_name: string; scope?: string };
 
 interface ConnectorRow {
   connector_id: string;
@@ -46,19 +57,52 @@ interface ActionRow {
   updated_at: number;
 }
 
+const oauthClientAuthMethodSchema = z.enum(["basic", "body"]).default("body");
+
 const authSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }),
   z.object({ type: z.literal("bearer_secret"), secret_name: z.string().min(2).max(80) }),
+  z.object({ type: z.literal("auth_header_secret"), secret_name: z.string().min(2).max(80), scheme: z.string().min(1).max(30).optional() }),
   z.object({ type: z.literal("api_key_header_secret"), secret_name: z.string().min(2).max(80), header_name: z.string().min(2).max(80) }),
   z.object({ type: z.literal("api_key_query_secret"), secret_name: z.string().min(2).max(80), query_name: z.string().min(1).max(80) }),
   z.object({ type: z.literal("basic_secret"), secret_name: z.string().min(2).max(80), username: z.string().max(120).optional() }),
+  z.object({ type: z.literal("basic_secret_pair"), username_secret_name: z.string().min(2).max(80), password_secret_name: z.string().min(2).max(80) }),
+  z.object({
+    type: z.literal("oauth2_client_credentials"),
+    token_url: z.string().url(),
+    client_id_secret_name: z.string().min(2).max(80),
+    client_secret_secret_name: z.string().min(2).max(80),
+    scope: z.string().max(1000).optional(),
+    audience: z.string().max(1000).optional(),
+    client_auth_method: oauthClientAuthMethodSchema.optional(),
+    access_token_field: z.string().min(1).max(80).optional(),
+    token_type: z.string().min(1).max(30).optional(),
+  }),
+  z.object({
+    type: z.literal("oauth2_refresh_token"),
+    token_url: z.string().url(),
+    refresh_token_secret_name: z.string().min(2).max(80),
+    client_id_secret_name: z.string().min(2).max(80).optional(),
+    client_secret_secret_name: z.string().min(2).max(80).optional(),
+    scope: z.string().max(1000).optional(),
+    client_auth_method: oauthClientAuthMethodSchema.optional(),
+    access_token_field: z.string().min(1).max(80).optional(),
+    token_type: z.string().min(1).max(30).optional(),
+  }),
+  z.object({
+    type: z.literal("google_oauth2_refresh_token"),
+    client_id_secret_name: z.string().min(2).max(80),
+    client_secret_secret_name: z.string().min(2).max(80),
+    refresh_token_secret_name: z.string().min(2).max(80),
+    scope: z.string().max(1000).optional(),
+  }),
 ]);
 
 const actionSchema = z.object({
   name: z.string().min(1).max(80).describe(biInline("Action name, for example create_lead.", "Назва дії, наприклад create_lead.")),
   description: z.string().max(500).optional(),
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("POST"),
-  url: z.string().url().describe(biInline("Public HTTPS API URL.", "Публічний HTTPS URL API.")),
+  url: z.string().min(8).max(4000).describe(biInline("Public HTTPS API URL. Path templates like /workflows/{{id}} are supported.", "Публічний HTTPS URL API. Підтримуються path templates типу /workflows/{{id}}.")),
   auth: authSchema.default({ type: "none" }),
   headers: z.record(z.string(), z.string()).default({}).describe(biInline("Optional safe request headers. Do not include Authorization or Cookie.", "Опційні безпечні headers. Не додавайте Authorization або Cookie.")),
   query: z.record(z.string(), z.unknown()).default({}).describe(biInline("Optional query values. Templates like {{email}} are supported.", "Опційні query значення. Підтримуються шаблони типу {{email}}.")),
@@ -178,7 +222,7 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
 
   for (const action of args.actions) {
     const actionName = safeKey(action.name).replaceAll(":", "-");
-    const url = assertSafeOutboundUrl(action.url);
+    validateTemplatedUrl(action.url);
     validateAuth(action.auth as AuthConfig);
     validateSafeHeaders(action.headers || {});
     await db.prepare(
@@ -190,7 +234,7 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
       actionName,
       action.description || null,
       action.method || "POST",
-      url.toString(),
+      action.url,
       JSON.stringify(action.auth || { type: "none" }),
       JSON.stringify(action.headers || {}),
       JSON.stringify(action.query || {}),
@@ -212,7 +256,7 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
   const connectors = [];
   for (const row of rows.results || []) {
     const item: JsonObject = publicConnector(row);
-    if (args.include_actions) item.actions = await listActionsForConnector(db, row.connector_id);
+    if (args.include_actions) item.actions = await listActionsForConnector(env, db, row.connector_id);
     connectors.push(item);
   }
   return { connectors };
@@ -233,7 +277,7 @@ export async function testConnector(env: Env, args: z.infer<z.ZodObject<typeof t
   await ensureConnectorSchema(env);
   const connectorId = safeKey(args.connector_id).replaceAll(":", "-");
   const actionName = args.action_name ? safeKey(args.action_name).replaceAll(":", "-") : null;
-  const actions = await listActionsForConnector(db, connectorId);
+  const actions = await listActionsForConnector(env, db, connectorId);
   if (!actions.length) throw new Error(biInline("Connector not found or has no actions.", "Конектор не знайдено або він не має дій."));
   if (!actionName) return { ok: true, connector_id: connectorId, actions };
   return callConnectorTool(env, { connector_id: connectorId, action_name: actionName, input: args.input || {}, dry_run: args.dry_run ?? true });
@@ -262,7 +306,8 @@ export async function callConnectorTool(env: Env, args: z.infer<z.ZodObject<type
 }
 
 async function callInternalAction(env: Env, action: ActionRow, input: JsonObject, dryRun: boolean) {
-  const url = assertSafeOutboundUrl(action.url);
+  assertUrlTemplateInput(action.url, input);
+  const url = assertSafeOutboundUrl(renderUrlString(action.url, input));
   const method = action.method.toUpperCase();
   const headers = new Headers();
   headers.set("accept", "application/json, text/plain;q=0.9, */*;q=0.1");
@@ -279,7 +324,7 @@ async function callInternalAction(env: Env, action: ActionRow, input: JsonObject
   }
 
   const auth = parseJson<AuthConfig>(action.auth_json, { type: "none" });
-  applyAuth(env, url, headers, auth);
+  await applyAuth(env, url, headers, auth);
 
   let body: string | undefined;
   if (!["GET", "DELETE"].includes(method) && action.body_template_json) {
@@ -303,13 +348,7 @@ async function callInternalAction(env: Env, action: ActionRow, input: JsonObject
   return {
     ok: response.ok,
     request: prepared,
-    response: {
-      status: response.status,
-      status_text: response.statusText,
-      content_type: response.headers.get("content-type"),
-      text: truncate(text, MAX_RESPONSE_TEXT),
-      truncated: text.length > MAX_RESPONSE_TEXT,
-    },
+    response: buildConnectorResponse(response, text),
   };
 }
 
@@ -334,25 +373,64 @@ async function callChildWorkerConnector(env: Env, connector: ConnectorRow, actio
   return {
     ok: response.ok,
     child_worker_url: redactUrlForOutput(endpoint),
-    response: {
-      status: response.status,
-      content_type: response.headers.get("content-type"),
-      text: truncate(text, MAX_RESPONSE_TEXT),
-      truncated: text.length > MAX_RESPONSE_TEXT,
-    },
+    response: buildConnectorResponse(response, text),
   };
 }
 
-async function listActionsForConnector(db: D1Database, connectorId: string) {
+async function listActionsForConnector(env: Env, db: D1Database, connectorId: string) {
   const rows = await db.prepare("SELECT * FROM connector_actions WHERE connector_id = ? ORDER BY action_name").bind(connectorId).all<ActionRow>();
   return (rows.results || []).map((row) => ({
     name: row.action_name,
     description: row.description,
     method: row.method,
-    url: redactUrlForOutput(assertSafeOutboundUrl(row.url)),
-    auth: publicAuth(parseJson<AuthConfig>(row.auth_json, { type: "none" })),
+    url: redactTemplatedUrl(row.url),
+    auth: publicAuth(parseJson<AuthConfig>(row.auth_json, { type: "none" }), env),
     input_schema: row.input_schema_json ? JSON.parse(row.input_schema_json) : null,
   }));
+}
+
+function buildConnectorResponse(response: Response, text: string) {
+  const contentType = response.headers.get("content-type");
+  const parsedJson = parseJsonMaybe(text);
+  const bodyKind = parsedJson.ok ? "json" : "text";
+  return {
+    status: response.status,
+    status_text: response.statusText,
+    ok: response.ok,
+    content_type: contentType,
+    body_kind: bodyKind,
+    json: parsedJson.ok ? compactJson(parsedJson.value) : null,
+    text: parsedJson.ok ? null : truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
+    raw_text_preview: truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
+    truncated: text.length > MAX_RESPONSE_PREVIEW_TEXT,
+  };
+}
+
+function parseJsonMaybe(text: string): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function compactJson(value: unknown, depth = 0): unknown {
+  if (depth > MAX_JSON_DEPTH) return "[max depth reached]";
+  if (typeof value === "string") return truncate(value, 2000);
+  if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
+  if (Array.isArray(value)) {
+    const items = value.slice(0, MAX_JSON_ARRAY_ITEMS).map((item) => compactJson(item, depth + 1));
+    if (value.length > MAX_JSON_ARRAY_ITEMS) items.push(`[...${value.length - MAX_JSON_ARRAY_ITEMS} more items]`);
+    return items;
+  }
+  if (value && typeof value === "object") {
+    const out: JsonObject = {};
+    const entries = Object.entries(value as JsonObject);
+    for (const [key, child] of entries.slice(0, MAX_JSON_OBJECT_KEYS)) out[key] = compactJson(child, depth + 1);
+    if (entries.length > MAX_JSON_OBJECT_KEYS) out.__truncated_keys = entries.length - MAX_JSON_OBJECT_KEYS;
+    return out;
+  }
+  return String(value);
 }
 
 function publicConnector(row: ConnectorRow) {
@@ -368,25 +446,109 @@ function publicConnector(row: ConnectorRow) {
   };
 }
 
-function applyAuth(env: Env, url: URL, headers: Headers, auth: AuthConfig) {
+async function applyAuth(env: Env, url: URL, headers: Headers, auth: AuthConfig) {
   if (!auth || auth.type === "none") return;
   validateAuth(auth);
-  const secret = getSecret(env, auth.secret_name);
+
   if (auth.type === "bearer_secret") {
-    headers.set("authorization", `Bearer ${secret}`);
+    headers.set("authorization", `Bearer ${getSecret(env, auth.secret_name)}`);
+    return;
+  }
+  if (auth.type === "auth_header_secret") {
+    const scheme = auth.scheme || "Bearer";
+    headers.set("authorization", `${scheme} ${getSecret(env, auth.secret_name)}`);
     return;
   }
   if (auth.type === "api_key_header_secret") {
-    headers.set(auth.header_name, secret);
+    headers.set(auth.header_name, getSecret(env, auth.secret_name));
     return;
   }
   if (auth.type === "api_key_query_secret") {
-    url.searchParams.set(auth.query_name, secret);
+    url.searchParams.set(auth.query_name, getSecret(env, auth.secret_name));
     return;
   }
   if (auth.type === "basic_secret") {
-    headers.set("authorization", `Basic ${btoa(`${auth.username || ""}:${secret}`)}`);
+    headers.set("authorization", `Basic ${btoa(`${auth.username || ""}:${getSecret(env, auth.secret_name)}`)}`);
+    return;
   }
+  if (auth.type === "basic_secret_pair") {
+    const username = getSecret(env, auth.username_secret_name);
+    const password = getSecret(env, auth.password_secret_name);
+    headers.set("authorization", `Basic ${btoa(`${username}:${password}`)}`);
+    return;
+  }
+  if (auth.type === "oauth2_client_credentials") {
+    const token = await fetchOAuthAccessToken(env, {
+      grant_type: "client_credentials",
+      token_url: auth.token_url,
+      client_id_secret_name: auth.client_id_secret_name,
+      client_secret_secret_name: auth.client_secret_secret_name,
+      scope: auth.scope,
+      audience: auth.audience,
+      client_auth_method: auth.client_auth_method || "body",
+      access_token_field: auth.access_token_field || "access_token",
+    });
+    headers.set("authorization", `${auth.token_type || "Bearer"} ${token}`);
+    return;
+  }
+  if (auth.type === "oauth2_refresh_token") {
+    const token = await fetchOAuthAccessToken(env, {
+      grant_type: "refresh_token",
+      token_url: auth.token_url,
+      refresh_token_secret_name: auth.refresh_token_secret_name,
+      client_id_secret_name: auth.client_id_secret_name,
+      client_secret_secret_name: auth.client_secret_secret_name,
+      scope: auth.scope,
+      client_auth_method: auth.client_auth_method || "body",
+      access_token_field: auth.access_token_field || "access_token",
+    });
+    headers.set("authorization", `${auth.token_type || "Bearer"} ${token}`);
+    return;
+  }
+  if (auth.type === "google_oauth2_refresh_token") {
+    const token = await fetchOAuthAccessToken(env, {
+      grant_type: "refresh_token",
+      token_url: "https://oauth2.googleapis.com/token",
+      refresh_token_secret_name: auth.refresh_token_secret_name,
+      client_id_secret_name: auth.client_id_secret_name,
+      client_secret_secret_name: auth.client_secret_secret_name,
+      scope: auth.scope,
+      client_auth_method: "body",
+      access_token_field: "access_token",
+    });
+    headers.set("authorization", `Bearer ${token}`);
+  }
+}
+
+function renderUrlString(template: string, input: JsonObject): string {
+  return renderString(template, input);
+}
+
+function validateTemplatedUrl(template: string) {
+  assertSafeOutboundUrl(templateUrlForValidation(template));
+}
+
+function assertUrlTemplateInput(template: string, input: JsonObject) {
+  const missing = templateKeys(template).filter((key) => getPath(input, key) === undefined || getPath(input, key) === null || getPath(input, key) === "");
+  if (missing.length) {
+    throw new Error(`${biInline("Missing input values for URL template", "Бракує input значень для URL template")}: ${missing.join(", ")}`);
+  }
+}
+
+function templateKeys(template: string): string[] {
+  return Array.from(template.matchAll(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g)).map((match) => match[1]);
+}
+
+function templateUrlForValidation(template: string): string {
+  return template.replace(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g, (_match, path: string) => {
+    const lower = path.toLowerCase();
+    if (lower.includes("token") || lower.includes("secret") || lower.includes("password") || lower.includes("key")) return "REDACTED";
+    return "example";
+  });
+}
+
+function redactTemplatedUrl(template: string): string {
+  return template.replace(/([?&][^=]*(?:token|key|secret|password|auth|signature)[^=]*=)([^&]+)/gi, "$1[redacted]");
 }
 
 function getSecret(env: Env, name: string): string {
@@ -398,9 +560,82 @@ function getSecret(env: Env, name: string): string {
   return value;
 }
 
+interface OAuthTokenRequestConfig {
+  grant_type: "client_credentials" | "refresh_token";
+  token_url: string;
+  client_id_secret_name?: string;
+  client_secret_secret_name?: string;
+  refresh_token_secret_name?: string;
+  scope?: string;
+  audience?: string;
+  client_auth_method: OAuthClientAuthMethod;
+  access_token_field: string;
+}
+
+async function fetchOAuthAccessToken(env: Env, config: OAuthTokenRequestConfig): Promise<string> {
+  const tokenUrl = assertSafeOutboundUrl(config.token_url);
+  const body = new URLSearchParams();
+  body.set("grant_type", config.grant_type);
+  if (config.scope) body.set("scope", config.scope);
+  if (config.audience) body.set("audience", config.audience);
+  if (config.refresh_token_secret_name) body.set("refresh_token", getSecret(env, config.refresh_token_secret_name));
+
+  const clientId = config.client_id_secret_name ? getSecret(env, config.client_id_secret_name) : "";
+  const clientSecret = config.client_secret_secret_name ? getSecret(env, config.client_secret_secret_name) : "";
+  const headers = new Headers({
+    "accept": "application/json",
+    "content-type": "application/x-www-form-urlencoded; charset=utf-8",
+  });
+
+  if (config.client_auth_method === "basic" && clientId && clientSecret) {
+    headers.set("authorization", `Basic ${btoa(`${clientId}:${clientSecret}`)}`);
+  } else {
+    if (clientId) body.set("client_id", clientId);
+    if (clientSecret) body.set("client_secret", clientSecret);
+  }
+
+  const response = await fetch(tokenUrl.toString(), { method: "POST", headers, body, redirect: "manual" });
+  const payload = await response.json().catch(() => null) as JsonObject | null;
+  if (!response.ok || !payload) {
+    throw new Error(`${biInline("OAuth token request failed", "OAuth token запит не вдався")}: ${response.status}`);
+  }
+
+  const token = payload[config.access_token_field];
+  if (typeof token !== "string" || !token) {
+    throw new Error(biInline("OAuth token response does not include an access token.", "OAuth token відповідь не містить access token."));
+  }
+  return token;
+}
+
 function validateAuth(auth: AuthConfig) {
   if (!auth || auth.type === "none") return;
-  validateSecretName(auth.secret_name);
+
+  if (auth.type === "bearer_secret" || auth.type === "auth_header_secret" || auth.type === "api_key_header_secret" || auth.type === "api_key_query_secret" || auth.type === "basic_secret") {
+    validateSecretName(auth.secret_name);
+  }
+  if (auth.type === "basic_secret_pair") {
+    validateSecretName(auth.username_secret_name);
+    validateSecretName(auth.password_secret_name);
+  }
+  if (auth.type === "oauth2_client_credentials") {
+    assertSafeOutboundUrl(auth.token_url);
+    validateSecretName(auth.client_id_secret_name);
+    validateSecretName(auth.client_secret_secret_name);
+    validateTokenOptions(auth.client_auth_method, auth.access_token_field, auth.token_type);
+  }
+  if (auth.type === "oauth2_refresh_token") {
+    assertSafeOutboundUrl(auth.token_url);
+    validateSecretName(auth.refresh_token_secret_name);
+    if (auth.client_id_secret_name) validateSecretName(auth.client_id_secret_name);
+    if (auth.client_secret_secret_name) validateSecretName(auth.client_secret_secret_name);
+    validateTokenOptions(auth.client_auth_method, auth.access_token_field, auth.token_type);
+  }
+  if (auth.type === "google_oauth2_refresh_token") {
+    validateSecretName(auth.client_id_secret_name);
+    validateSecretName(auth.client_secret_secret_name);
+    validateSecretName(auth.refresh_token_secret_name);
+  }
+  if (auth.type === "auth_header_secret") validateAuthScheme(auth.scheme || "Bearer");
   if (auth.type === "api_key_header_secret") validateHeaderName(auth.header_name);
   if (auth.type === "api_key_query_secret" && !/^[A-Za-z0-9_.-]{1,80}$/.test(auth.query_name)) throw new Error(biInline("Invalid query key name.", "Некоректна назва query key."));
 }
@@ -409,6 +644,16 @@ function validateSecretName(name: string) {
   if (!/^[A-Z][A-Z0-9_]{1,80}$/.test(name)) {
     throw new Error(biInline("Secret name must use uppercase letters, numbers, and underscores.", "Назва secret має містити великі літери, цифри й підкреслення."));
   }
+}
+
+function validateTokenOptions(clientAuthMethod?: OAuthClientAuthMethod, accessTokenField?: string, tokenType?: string) {
+  if (clientAuthMethod && !["basic", "body"].includes(clientAuthMethod)) throw new Error(biInline("Invalid OAuth client auth method.", "Некоректний OAuth client auth method."));
+  if (accessTokenField && !/^[A-Za-z0-9_.-]{1,80}$/.test(accessTokenField)) throw new Error(biInline("Invalid OAuth access token field.", "Некоректне OAuth access token field."));
+  if (tokenType) validateAuthScheme(tokenType);
+}
+
+function validateAuthScheme(value: string) {
+  if (!/^[A-Za-z][A-Za-z0-9._-]{0,29}$/.test(value)) throw new Error(biInline("Invalid authorization scheme.", "Некоректна authorization scheme."));
 }
 
 function validateHeaderName(name: string) {
@@ -467,9 +712,48 @@ function parseJson<T>(value: string, fallback: T): T {
   }
 }
 
-function publicAuth(auth: AuthConfig) {
+function publicAuth(auth: AuthConfig, env: Env) {
   if (!auth || auth.type === "none") return { type: "none" };
-  return { ...auth, secret_configured: true, secret_value: "[hidden]" };
+  const secretNames = getAuthSecretNames(auth);
+  return {
+    type: auth.type,
+    ...publicAuthDetails(auth),
+    secrets: secretNames.map((name) => ({
+      name,
+      configured: isSecretConfigured(env, name),
+      value: "[hidden]",
+    })),
+  };
+}
+
+function publicAuthDetails(auth: AuthConfig): JsonObject {
+  if (auth.type === "api_key_header_secret") return { header_name: auth.header_name };
+  if (auth.type === "api_key_query_secret") return { query_name: auth.query_name };
+  if (auth.type === "auth_header_secret") return { scheme: auth.scheme || "Bearer" };
+  if (auth.type === "oauth2_client_credentials" || auth.type === "oauth2_refresh_token") {
+    return {
+      token_url: redactTemplatedUrl(auth.token_url),
+      scope: auth.scope || null,
+      audience: "audience" in auth ? auth.audience || null : null,
+      client_auth_method: auth.client_auth_method || "body",
+    };
+  }
+  if (auth.type === "google_oauth2_refresh_token") return { token_url: "https://oauth2.googleapis.com/token", scope: auth.scope || null };
+  return {};
+}
+
+function getAuthSecretNames(auth: AuthConfig): string[] {
+  if (auth.type === "bearer_secret" || auth.type === "auth_header_secret" || auth.type === "api_key_header_secret" || auth.type === "api_key_query_secret" || auth.type === "basic_secret") return [auth.secret_name];
+  if (auth.type === "basic_secret_pair") return [auth.username_secret_name, auth.password_secret_name];
+  if (auth.type === "oauth2_client_credentials") return [auth.client_id_secret_name, auth.client_secret_secret_name];
+  if (auth.type === "oauth2_refresh_token") return [auth.refresh_token_secret_name, auth.client_id_secret_name, auth.client_secret_secret_name].filter(Boolean) as string[];
+  if (auth.type === "google_oauth2_refresh_token") return [auth.client_id_secret_name, auth.client_secret_secret_name, auth.refresh_token_secret_name];
+  return [];
+}
+
+function isSecretConfigured(env: Env, name: string): boolean {
+  const value = (env as Record<string, unknown>)[name];
+  return typeof value === "string" && value.length > 0;
 }
 
 function redactHeaders(headers: Headers) {
