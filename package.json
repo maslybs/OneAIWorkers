@@ -37,6 +37,9 @@
     "bindings": {
       "OAUTH_DB": {
         "description": "D1 database used by OneAIWorkers to store OAuth, connector registry, connector actions, and audit records. Cloudflare creates it automatically during deployment."
+      },
+      "MCP_SHARED_SECRET": {
+        "description": "Required. A private password that protects OAuth connection and manual MCP access. Generate a long random value and keep it secret."
       }
     }
   }

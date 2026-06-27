@@ -146,9 +146,11 @@ OAuth-токенів
 
 Cloudflare попросить підключити ваш обліковий запис і розгорнути Worker.
 
-Перший deploy спеціально мінімальний. Він не має питати Telegram, Discord, Slack, Worker Builder або custom API secrets.
+Перший deploy спеціально мінімальний, але він все одно питає один обовʼязковий secret: `MCP_SHARED_SECRET`. Він захищає OAuth-підключення і ручний MCP-доступ.
 
-Після deploy додайте тільки ті secrets, які вам реально потрібні, у Cloudflare:
+Згенеруйте довге випадкове значення і збережіть його під час deploy.
+
+Після deploy додайте тільки ті додаткові secrets, які вам реально потрібні, у Cloudflare:
 
 ```text
 Cloudflare dashboard
@@ -157,12 +159,6 @@ Cloudflare dashboard
 → Settings
 → Variables and Secrets
 → Add Secret
-```
-
-Рекомендовано після deploy:
-
-```text
-MCP_SHARED_SECRET
 ```
 
 Опційні secrets, які можна додати пізніше:

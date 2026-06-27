@@ -148,21 +148,23 @@ export async function handleOAuthAuthorize(request: Request, env: Env, baseUrl: 
   const client = await getOrCreateClient(env, clientId, redirectUri);
   if (!isRedirectUriAllowed(client, redirectUri)) return oauthError("redirect_uri is not allowed.", 400);
 
-  if (env.MCP_SHARED_SECRET && request.method === "GET") {
+  if (!env.MCP_SHARED_SECRET) {
+    return oauthError("MCP_SHARED_SECRET is required. Add it in Cloudflare Worker Settings → Variables and Secrets.", 503);
+  }
+
+  if (request.method === "GET") {
     return new Response(authorizeHtml(url), {
       headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
     });
   }
 
-  if (env.MCP_SHARED_SECRET && request.method === "POST") {
-    const form = await request.formData();
-    const providedSecret = String(form.get("secret") || "");
-    if (providedSecret !== env.MCP_SHARED_SECRET) {
-      return new Response(authorizeHtml(url, true), {
-        status: 401,
-        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
-      });
-    }
+  const form = await request.formData();
+  const providedSecret = String(form.get("secret") || "");
+  if (providedSecret !== env.MCP_SHARED_SECRET) {
+    return new Response(authorizeHtml(url, true), {
+      status: 401,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    });
   }
 
   const code = `oneaiworkers-code-${crypto.randomUUID()}`;

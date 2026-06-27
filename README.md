@@ -146,9 +146,11 @@ Click the button:
 
 Cloudflare will ask you to connect your account and deploy the Worker.
 
-The first deploy is intentionally minimal. It should not ask for Telegram, Discord, Slack, Worker Builder, or custom API secrets.
+The first deploy is intentionally minimal, but it still asks for one required secret: `MCP_SHARED_SECRET`. This protects OAuth connection and manual MCP access.
 
-After deploy, add only the secrets you need in Cloudflare:
+Generate a long random value and save it during deploy.
+
+After deploy, add only the extra secrets you need in Cloudflare:
 
 ```text
 Cloudflare dashboard
@@ -157,12 +159,6 @@ Cloudflare dashboard
 → Settings
 → Variables and Secrets
 → Add Secret
-```
-
-Recommended after deploy:
-
-```text
-MCP_SHARED_SECRET
 ```
 
 Optional secrets you can add later:

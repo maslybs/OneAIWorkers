@@ -1,13 +1,12 @@
 # Copy to .dev.vars for local development with `npm run dev`.
 # Do not commit real secrets.
 #
-# Production secrets are intentionally commented out here so the Cloudflare
-# Deploy Button does not ask for optional integrations during first deploy.
-# Add production secrets later in:
-# Cloudflare → Workers & Pages → your Worker → Settings → Variables and Secrets.
+# MCP_SHARED_SECRET is intentionally required by the Cloudflare Deploy Button.
+# It protects OAuth connection and manual MCP access.
+# Optional production secrets are commented out so the first deploy stays simple.
 
-# Recommended after deploy. Protects OAuth connection and manual access.
-# MCP_SHARED_SECRET=
+# Required. Generate a long random value before deploy.
+MCP_SHARED_SECRET=
 
 # Optional. Use only if your MCP client needs a fixed public URL.
 # PUBLIC_BASE_URL=http://localhost:8787
