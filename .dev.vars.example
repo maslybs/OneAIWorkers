@@ -1,16 +1,25 @@
 # Copy to .dev.vars for local development with `npm run dev`.
 # Do not commit real secrets.
 
-MCP_SHARED_SECRET=change-me
+# Recommended. Used to protect OAuth connection and manual access.
+MCP_SHARED_SECRET=
+
 PUBLIC_BASE_URL=http://localhost:8787
 
-# TELEGRAM_BOT_TOKEN=
-# TELEGRAM_CHAT_ID=
-# DISCORD_WEBHOOK_URL=
-# SLACK_WEBHOOK_URL=
-# DEFAULT_WEBHOOK_URL=
+# Optional. Fill only if you want Telegram messages.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 
-# Only needed for child Worker factory:
-# CF_ACCOUNT_ID=
-# CF_API_TOKEN=
-# CF_WORKERS_DEV_SUBDOMAIN=
+# Optional. Fill only if you want Discord messages.
+DISCORD_WEBHOOK_URL=
+
+# Optional. Fill only if you want Slack messages.
+SLACK_WEBHOOK_URL=
+
+# Optional. Fill only if you want a default Make/Zapier/n8n/custom webhook.
+DEFAULT_WEBHOOK_URL=
+
+# Optional. Needed only for child Worker creation.
+CF_ACCOUNT_ID=
+CF_API_TOKEN=
+CF_WORKERS_DEV_SUBDOMAIN=

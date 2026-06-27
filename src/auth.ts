@@ -1,4 +1,5 @@
 import { biInline } from "./i18n";
+import { isOAuthEnabled, isValidOAuthAccessToken, oauthUnauthorizedHeaders } from "./oauth";
 import type { Env } from "./types";
 
 export function getRequestToken(request: Request): string | null {
@@ -12,23 +13,29 @@ export function getRequestToken(request: Request): string | null {
   return url.searchParams.get("key") ?? url.searchParams.get("access_token");
 }
 
-export function isMcpAuthorized(request: Request, env: Env): boolean {
-  if (!env.MCP_SHARED_SECRET) return true;
-  return getRequestToken(request) === env.MCP_SHARED_SECRET;
+export async function isMcpAuthorized(request: Request, env: Env): Promise<boolean> {
+  const token = getRequestToken(request);
+
+  if (token && env.MCP_SHARED_SECRET && token === env.MCP_SHARED_SECRET) return true;
+  if (token && isOAuthEnabled(env) && await isValidOAuthAccessToken(token, env)) return true;
+
+  if (!env.MCP_SHARED_SECRET && !isOAuthEnabled(env)) return true;
+  return false;
 }
 
-export function unauthorized(env: Env): Response {
-  const body = env.MCP_SHARED_SECRET
+export function unauthorized(request: Request, env: Env): Response {
+  const body = env.MCP_SHARED_SECRET || isOAuthEnabled(env)
     ? biInline(
-        "Unauthorized. Provide Authorization: Bearer <token>, x-oneaiworkers-token, or ?key=...",
-        "Немає доступу. Передайте Authorization: Bearer <token>, x-oneaiworkers-token або ?key=...",
+        "Unauthorized. Use OAuth, Authorization: Bearer <token>, x-oneaiworkers-token, or ?key=...",
+        "Немає доступу. Використайте OAuth, Authorization: Bearer <token>, x-oneaiworkers-token або ?key=...",
       )
     : biInline("Unauthorized.", "Немає доступу.");
+
   return new Response(body, {
     status: 401,
     headers: {
       "content-type": "text/plain; charset=utf-8",
-      "www-authenticate": "Bearer",
+      ...oauthUnauthorizedHeaders(request, env),
     },
   });
 }

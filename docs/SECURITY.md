@@ -11,7 +11,7 @@ OneAIWorkers lets an AI assistant read public pages and call external services. 
 - Public URL tools block local and private hosts.
 - Secrets should be stored as Cloudflare Worker secrets.
 - Tool results hide sensitive URL fields such as `token`, `key`, `secret`, `password`, `auth`, and `signature`.
-- The project does not include a database by default.
+- D1 is used only for OAuth clients, authorization codes, and access tokens. It is not used for AI memory.
 
 ## MCP access
 

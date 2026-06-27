@@ -4,7 +4,7 @@
 
 OneAIWorkers is a small Cloudflare Worker that gives an AI assistant safe actions through MCP.
 
-It does not need a database, queues, or Cloudflare cron. The AI assistant keeps memory and decides what to do.
+It does not need a database for AI memory. The AI assistant keeps memory and decides what to do. OneAIWorkers uses a small D1 database only for OAuth clients and tokens.
 
 ## Option A: Deploy button
 

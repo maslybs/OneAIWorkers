@@ -3,6 +3,8 @@ export interface Env {
   PUBLIC_BASE_URL?: string;
   MCP_SHARED_SECRET?: string;
 
+  OAUTH_DB?: D1Database;
+
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;

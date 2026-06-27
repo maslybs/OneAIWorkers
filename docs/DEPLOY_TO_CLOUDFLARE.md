@@ -16,7 +16,8 @@ When a user clicks the button, Cloudflare can:
 
 1. copy the project;
 2. set up a Worker build;
-3. deploy the Worker to the user's Cloudflare account.
+3. create the required D1 database for OAuth;
+4. deploy the Worker to the user's Cloudflare account.
 
 ## Button code
 
@@ -41,9 +42,11 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 
 ## Private access
 
-The Worker can run without secrets. That is fine for a first test.
+The Worker supports OAuth for ChatGPT. OAuth clients and tokens are stored in D1, which Cloudflare creates during deployment.
 
-For personal use, add `MCP_SHARED_SECRET` in Cloudflare:
+The Worker can run without secrets. That is fine for a first test, but anyone who can complete the OAuth flow could connect.
+
+For personal use, add `MCP_SHARED_SECRET` in Cloudflare. During OAuth connection, OneAIWorkers will ask for this secret once:
 
 1. Open the deployed Worker.
 2. Open **Settings**.
@@ -86,7 +89,17 @@ SLACK_WEBHOOK_URL
 DEFAULT_WEBHOOK_URL
 ```
 
-You can add these later. They are not needed for the first test.
+You can leave these fields empty during deployment. They are not needed for the first test.
+
+To add them later:
+
+1. Open Cloudflare dashboard.
+2. Go to **Workers & Pages**.
+3. Open your OneAIWorkers Worker.
+4. Open **Settings**.
+5. Open **Variables and Secrets**.
+6. Add the missing value as a **Secret**.
+7. Redeploy if Cloudflare asks.
 
 ## What the button does not do
 

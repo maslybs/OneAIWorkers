@@ -37,14 +37,16 @@ npm run deploy
 
 ## Private access
 
-For personal use, add a shared secret:
+For ChatGPT, use **OAuth** in the app settings. OneAIWorkers stores OAuth clients and tokens in a small D1 database that Cloudflare creates during deploy.
+
+For extra protection, add a shared secret. During OAuth connection, the user will enter this secret once:
 
 ```bash
 npx wrangler secret put MCP_SHARED_SECRET
 npm run deploy
 ```
 
-Then connect with:
+For manual shared-secret access, connect with:
 
 ```text
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
@@ -89,7 +91,7 @@ docs/                     user and developer guides
 ## What it does not do
 
 - It does not store memory for the AI assistant.
-- It does not include a database.
+- It does not use a database for AI memory. D1 is used only for OAuth clients and tokens.
 - It does not run arbitrary code created by AI.
 - It does not include full user accounts, billing, or OAuth.
 
