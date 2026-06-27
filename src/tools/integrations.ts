@@ -101,43 +101,49 @@ export const testConnectorSchema = {
 export async function ensureConnectorSchema(env: Env): Promise<void> {
   const db = getDb(env);
   if (!schemaReady) {
-    schemaReady = db.exec(`
-      CREATE TABLE IF NOT EXISTS connectors (
-        connector_id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        mode TEXT NOT NULL DEFAULT 'internal',
-        child_worker_url TEXT,
-        child_worker_token_secret TEXT,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS connector_actions (
-        connector_id TEXT NOT NULL,
-        action_name TEXT NOT NULL,
-        description TEXT,
-        method TEXT NOT NULL,
-        url TEXT NOT NULL,
-        auth_json TEXT NOT NULL,
-        headers_json TEXT NOT NULL,
-        query_json TEXT NOT NULL,
-        body_template_json TEXT,
-        input_schema_json TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        PRIMARY KEY (connector_id, action_name)
-      );
-      CREATE TABLE IF NOT EXISTS connector_audit_log (
-        id TEXT PRIMARY KEY,
-        connector_id TEXT,
-        action_name TEXT,
-        event TEXT NOT NULL,
-        ok INTEGER NOT NULL,
-        message TEXT,
-        created_at INTEGER NOT NULL
-      );
-    `).then(() => undefined);
+    schemaReady = (async () => {
+      const statements = [
+        `CREATE TABLE IF NOT EXISTS connectors (
+          connector_id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          mode TEXT NOT NULL DEFAULT 'internal',
+          child_worker_url TEXT,
+          child_worker_token_secret TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS connector_actions (
+          connector_id TEXT NOT NULL,
+          action_name TEXT NOT NULL,
+          description TEXT,
+          method TEXT NOT NULL,
+          url TEXT NOT NULL,
+          auth_json TEXT NOT NULL,
+          headers_json TEXT NOT NULL,
+          query_json TEXT NOT NULL,
+          body_template_json TEXT,
+          input_schema_json TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (connector_id, action_name)
+        )`,
+        `CREATE TABLE IF NOT EXISTS connector_audit_log (
+          id TEXT PRIMARY KEY,
+          connector_id TEXT,
+          action_name TEXT,
+          event TEXT NOT NULL,
+          ok INTEGER NOT NULL,
+          message TEXT,
+          created_at INTEGER NOT NULL
+        )`,
+      ];
+      for (const sql of statements) await db.prepare(sql).run();
+    })().catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
   }
   await schemaReady;
 }
