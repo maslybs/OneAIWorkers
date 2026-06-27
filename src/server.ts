@@ -7,7 +7,7 @@ import { errorMessage, mcpText } from "./response";
 import { checkUrlStatus, checkUrlStatusSchema, fetchManyUrls, fetchManyUrlsSchema, fetchRss, fetchRssSchema, fetchUrl, fetchUrlSchema } from "./tools/observe";
 import { callWebhook, callWebhookSchema, sendNotification, sendNotificationSchema } from "./tools/notify";
 import { createChildWorkerFromTemplate, createChildWorkerSchema, deployCustomChildWorker, deployCustomChildWorkerSchema } from "./tools/factory";
-import { callConnectorTool, callConnectorToolSchema, deleteConnector, connectorIdSchema, listConnectors, listConnectorsSchema, saveConnector, saveConnectorSchema, testConnector, testConnectorSchema } from "./tools/integrations";
+import { callConnectorTool, callConnectorToolSchema, connectorSetupStatus, connectorSetupStatusSchema, deleteConnector, connectorIdSchema, listConnectors, listConnectorsSchema, saveConnector, saveConnectorSchema, testConnector, testConnectorSchema } from "./tools/integrations";
 
 export function createMcpServer(env: Env, request: Request): McpServer {
   const server = new McpServer({
@@ -55,6 +55,7 @@ export function createMcpServer(env: Env, request: Request): McpServer {
             "call_webhook",
             "save_connector",
             "list_connectors",
+            "connector_setup_status",
             "test_connector",
             "call_connector_tool",
             "delete_connector",
@@ -83,6 +84,7 @@ export function createMcpServer(env: Env, request: Request): McpServer {
 
   tool(server, "save_connector", bi("Creates or updates a connector. Basic mode stores API actions in D1. Advanced mode can point to a child Worker.", "Створює або оновлює конектор. Базовий режим зберігає API-дії в D1. Розширений режим може вказувати на child Worker."), saveConnectorSchema, (args) => saveConnector(env, args));
   tool(server, "list_connectors", bi("Lists saved connectors and optionally their actions.", "Показує збережені конектори й, за потреби, їхні дії."), listConnectorsSchema, (args) => listConnectors(env, args));
+  tool(server, "connector_setup_status", bi("Shows connector engine readiness, configured integrations, saved connectors, and missing Cloudflare Secrets.", "Показує готовність connector engine, налаштовані інтеграції, збережені конектори й відсутні Cloudflare Secrets."), connectorSetupStatusSchema, (args) => connectorSetupStatus(env, args));
   tool(server, "test_connector", bi("Tests a connector action. By default it prepares the request without calling the external API.", "Тестує дію конектора. За замовчуванням готує запит без виклику зовнішнього API."), testConnectorSchema, (args) => testConnector(env, args));
   tool(server, "call_connector_tool", bi("Calls a saved connector action. Secrets are read by name from Cloudflare Secrets and are never returned to the LLM.", "Викликає збережену дію конектора. Secrets читаються за назвою з Cloudflare Secrets і ніколи не повертаються LLM."), callConnectorToolSchema, (args) => callConnectorTool(env, args));
   tool(server, "delete_connector", bi("Deletes a saved connector and its actions.", "Видаляє збережений конектор і його дії."), connectorIdSchema, (args) => deleteConnector(env, args));

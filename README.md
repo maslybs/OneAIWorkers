@@ -150,6 +150,8 @@ The first deploy is intentionally minimal, but it still asks for one required se
 
 Generate a long random value and save it during deploy.
 
+After deploy, use `connector_setup_status` to see the real state of D1, saved connectors, configured secrets, and missing secrets. It reports secret names only; values stay hidden.
+
 After deploy, add only the extra secrets you need in Cloudflare:
 
 ```text

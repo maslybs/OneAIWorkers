@@ -84,6 +84,7 @@ export default {
             "call_webhook",
             "save_connector",
             "list_connectors",
+            "connector_setup_status",
             "test_connector",
             "call_connector_tool",
             "delete_connector",

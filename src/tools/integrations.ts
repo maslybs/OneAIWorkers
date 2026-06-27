@@ -2,101 +2,14 @@ import { z } from "zod";
 import { biInline } from "../i18n";
 import { assertSafeOutboundUrl, redactUrlForOutput, safeKey } from "../security";
 import type { Env } from "../types";
+import { applyConnectorAuth, authSchema, getAuthSecretNames, getSecret, isSecretConfigured, publicAuth, redactHeaders, validateAuth, validateSafeHeaders, validateSecretName } from "./connectors/auth";
+import { buildConnectorResponse } from "./connectors/response";
+import { assertUrlTemplateInput, parseJson, parseJsonObject, redactTemplatedUrl, renderScalar, renderTemplate, renderUrlString, truncate, validateTemplatedUrl } from "./connectors/templates";
+import type { ActionRow, AuthConfig, ConnectorMode, ConnectorRow, JsonObject } from "./connectors/types";
 
 const MAX_RESPONSE_TEXT = 24_000;
-const MAX_RESPONSE_PREVIEW_TEXT = 4_000;
-const MAX_JSON_DEPTH = 6;
-const MAX_JSON_ARRAY_ITEMS = 12;
-const MAX_JSON_OBJECT_KEYS = 30;
-const MAX_TEMPLATE_DEPTH = 20;
 
 let schemaReady: Promise<void> | null = null;
-
-type JsonObject = Record<string, unknown>;
-
-type ConnectorMode = "internal" | "child_worker";
-
-type OAuthClientAuthMethod = "basic" | "body";
-
-type AuthConfig =
-  | { type: "none" }
-  | { type: "bearer_secret"; secret_name: string }
-  | { type: "auth_header_secret"; secret_name: string; scheme?: string }
-  | { type: "api_key_header_secret"; secret_name: string; header_name: string }
-  | { type: "api_key_query_secret"; secret_name: string; query_name: string }
-  | { type: "basic_secret"; secret_name: string; username?: string }
-  | { type: "basic_secret_pair"; username_secret_name: string; password_secret_name: string }
-  | { type: "oauth2_client_credentials"; token_url: string; client_id_secret_name: string; client_secret_secret_name: string; scope?: string; audience?: string; client_auth_method?: OAuthClientAuthMethod; access_token_field?: string; token_type?: string }
-  | { type: "oauth2_refresh_token"; token_url: string; refresh_token_secret_name: string; client_id_secret_name?: string; client_secret_secret_name?: string; scope?: string; client_auth_method?: OAuthClientAuthMethod; access_token_field?: string; token_type?: string }
-  | { type: "google_oauth2_refresh_token"; client_id_secret_name: string; client_secret_secret_name: string; refresh_token_secret_name: string; scope?: string };
-
-interface ConnectorRow {
-  connector_id: string;
-  name: string;
-  description: string | null;
-  mode: ConnectorMode;
-  child_worker_url: string | null;
-  child_worker_token_secret: string | null;
-  enabled: number;
-  created_at: number;
-  updated_at: number;
-}
-
-interface ActionRow {
-  connector_id: string;
-  action_name: string;
-  description: string | null;
-  method: string;
-  url: string;
-  auth_json: string;
-  headers_json: string;
-  query_json: string;
-  body_template_json: string | null;
-  input_schema_json: string | null;
-  created_at: number;
-  updated_at: number;
-}
-
-const oauthClientAuthMethodSchema = z.enum(["basic", "body"]).default("body");
-
-const authSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("none") }),
-  z.object({ type: z.literal("bearer_secret"), secret_name: z.string().min(2).max(80) }),
-  z.object({ type: z.literal("auth_header_secret"), secret_name: z.string().min(2).max(80), scheme: z.string().min(1).max(30).optional() }),
-  z.object({ type: z.literal("api_key_header_secret"), secret_name: z.string().min(2).max(80), header_name: z.string().min(2).max(80) }),
-  z.object({ type: z.literal("api_key_query_secret"), secret_name: z.string().min(2).max(80), query_name: z.string().min(1).max(80) }),
-  z.object({ type: z.literal("basic_secret"), secret_name: z.string().min(2).max(80), username: z.string().max(120).optional() }),
-  z.object({ type: z.literal("basic_secret_pair"), username_secret_name: z.string().min(2).max(80), password_secret_name: z.string().min(2).max(80) }),
-  z.object({
-    type: z.literal("oauth2_client_credentials"),
-    token_url: z.string().url(),
-    client_id_secret_name: z.string().min(2).max(80),
-    client_secret_secret_name: z.string().min(2).max(80),
-    scope: z.string().max(1000).optional(),
-    audience: z.string().max(1000).optional(),
-    client_auth_method: oauthClientAuthMethodSchema.optional(),
-    access_token_field: z.string().min(1).max(80).optional(),
-    token_type: z.string().min(1).max(30).optional(),
-  }),
-  z.object({
-    type: z.literal("oauth2_refresh_token"),
-    token_url: z.string().url(),
-    refresh_token_secret_name: z.string().min(2).max(80),
-    client_id_secret_name: z.string().min(2).max(80).optional(),
-    client_secret_secret_name: z.string().min(2).max(80).optional(),
-    scope: z.string().max(1000).optional(),
-    client_auth_method: oauthClientAuthMethodSchema.optional(),
-    access_token_field: z.string().min(1).max(80).optional(),
-    token_type: z.string().min(1).max(30).optional(),
-  }),
-  z.object({
-    type: z.literal("google_oauth2_refresh_token"),
-    client_id_secret_name: z.string().min(2).max(80),
-    client_secret_secret_name: z.string().min(2).max(80),
-    refresh_token_secret_name: z.string().min(2).max(80),
-    scope: z.string().max(1000).optional(),
-  }),
-]);
 
 const actionSchema = z.object({
   name: z.string().min(1).max(80).describe(biInline("Action name, for example create_lead.", "Назва дії, наприклад create_lead.")),
@@ -122,6 +35,10 @@ export const saveConnectorSchema = {
 
 export const listConnectorsSchema = {
   include_actions: z.boolean().default(false),
+};
+
+export const connectorSetupStatusSchema = {
+  include_connectors: z.boolean().default(true),
 };
 
 export const connectorIdSchema = {
@@ -192,6 +109,34 @@ export async function ensureConnectorSchema(env: Env): Promise<void> {
   await schemaReady;
 }
 
+export async function connectorSetupStatus(env: Env, args: z.infer<z.ZodObject<typeof connectorSetupStatusSchema>>) {
+  const base = {
+    d1_database: Boolean(env.OAUTH_DB),
+    mcp_shared_secret: Boolean(env.MCP_SHARED_SECRET),
+    worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
+    notifications: {
+      telegram: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
+      discord: Boolean(env.DISCORD_WEBHOOK_URL),
+      slack: Boolean(env.SLACK_WEBHOOK_URL),
+      default_webhook: Boolean(env.DEFAULT_WEBHOOK_URL),
+    },
+  };
+
+  if (!env.OAUTH_DB) return { ok: false, configured: base, message: biInline("D1 database is not configured.", "D1 база не налаштована.") };
+
+  const db = getDb(env);
+  await ensureConnectorSchema(env);
+  const rows = await db.prepare("SELECT * FROM connector_actions ORDER BY connector_id, action_name").all<ActionRow>();
+  const requiredSecrets = collectRequiredSecrets(env, rows.results || []);
+  return {
+    ok: true,
+    configured: base,
+    connectors: args.include_connectors ? (await listConnectors(env, { include_actions: true })).connectors : undefined,
+    required_secrets: requiredSecrets,
+    missing_secrets: requiredSecrets.filter((item) => !item.configured).map((item) => item.name),
+  };
+}
+
 export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof saveConnectorSchema>>) {
   const db = getDb(env);
   await ensureConnectorSchema(env);
@@ -199,11 +144,7 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
   const connectorId = safeKey(args.connector_id).replaceAll(":", "-");
   const now = nowSeconds();
   const mode = args.mode || "internal";
-  if (mode === "child_worker") {
-    if (!args.child_worker_url) throw new Error(biInline("child_worker_url is required for child_worker mode.", "Для режиму child_worker потрібен child_worker_url."));
-    assertSafeOutboundUrl(args.child_worker_url);
-    if (args.child_worker_token_secret) validateSecretName(args.child_worker_token_secret);
-  }
+  if (mode === "child_worker") validateChildWorkerConfig(args.child_worker_url, args.child_worker_token_secret);
 
   await db.prepare(
     `INSERT INTO connectors (connector_id, name, description, mode, child_worker_url, child_worker_token_secret, enabled, created_at, updated_at)
@@ -220,30 +161,7 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
 
   await db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId).run();
 
-  for (const action of args.actions) {
-    const actionName = safeKey(action.name).replaceAll(":", "-");
-    validateTemplatedUrl(action.url);
-    validateAuth(action.auth as AuthConfig);
-    validateSafeHeaders(action.headers || {});
-    await db.prepare(
-      `INSERT INTO connector_actions
-       (connector_id, action_name, description, method, url, auth_json, headers_json, query_json, body_template_json, input_schema_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      connectorId,
-      actionName,
-      action.description || null,
-      action.method || "POST",
-      action.url,
-      JSON.stringify(action.auth || { type: "none" }),
-      JSON.stringify(action.headers || {}),
-      JSON.stringify(action.query || {}),
-      action.body_template === undefined ? null : JSON.stringify(action.body_template),
-      action.input_schema === undefined ? null : JSON.stringify(action.input_schema),
-      now,
-      now,
-    ).run();
-  }
+  for (const action of args.actions) await saveConnectorAction(db, connectorId, action, now);
 
   await audit(db, connectorId, null, "save_connector", true, `Saved ${args.actions.length} actions`);
   return { ok: true, connector_id: connectorId, actions: args.actions.length, mode };
@@ -253,7 +171,7 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
   const db = getDb(env);
   await ensureConnectorSchema(env);
   const rows = await db.prepare("SELECT * FROM connectors WHERE enabled = 1 ORDER BY connector_id").all<ConnectorRow>();
-  const connectors = [];
+  const connectors: JsonObject[] = [];
   for (const row of rows.results || []) {
     const item: JsonObject = publicConnector(row);
     if (args.include_actions) item.actions = await listActionsForConnector(env, db, row.connector_id);
@@ -265,7 +183,7 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
 export async function deleteConnector(env: Env, args: z.infer<z.ZodObject<typeof connectorIdSchema>>) {
   const db = getDb(env);
   await ensureConnectorSchema(env);
-  const connectorId = safeKey(args.connector_id).replaceAll(":", "-");
+  const connectorId = normalizeKey(args.connector_id);
   await db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId).run();
   await db.prepare("DELETE FROM connectors WHERE connector_id = ?").bind(connectorId).run();
   await audit(db, connectorId, null, "delete_connector", true, "Deleted connector");
@@ -275,8 +193,8 @@ export async function deleteConnector(env: Env, args: z.infer<z.ZodObject<typeof
 export async function testConnector(env: Env, args: z.infer<z.ZodObject<typeof testConnectorSchema>>) {
   const db = getDb(env);
   await ensureConnectorSchema(env);
-  const connectorId = safeKey(args.connector_id).replaceAll(":", "-");
-  const actionName = args.action_name ? safeKey(args.action_name).replaceAll(":", "-") : null;
+  const connectorId = normalizeKey(args.connector_id);
+  const actionName = args.action_name ? normalizeKey(args.action_name) : null;
   const actions = await listActionsForConnector(env, db, connectorId);
   if (!actions.length) throw new Error(biInline("Connector not found or has no actions.", "Конектор не знайдено або він не має дій."));
   if (!actionName) return { ok: true, connector_id: connectorId, actions };
@@ -286,18 +204,14 @@ export async function testConnector(env: Env, args: z.infer<z.ZodObject<typeof t
 export async function callConnectorTool(env: Env, args: z.infer<z.ZodObject<typeof callConnectorToolSchema>>) {
   const db = getDb(env);
   await ensureConnectorSchema(env);
-  const connectorId = safeKey(args.connector_id).replaceAll(":", "-");
-  const actionName = safeKey(args.action_name).replaceAll(":", "-");
+  const connectorId = normalizeKey(args.connector_id);
+  const actionName = normalizeKey(args.action_name);
   const connector = await db.prepare("SELECT * FROM connectors WHERE connector_id = ? AND enabled = 1").bind(connectorId).first<ConnectorRow>();
   if (!connector) throw new Error(biInline("Connector not found.", "Конектор не знайдено."));
 
-  if (connector.mode === "child_worker") {
-    return callChildWorkerConnector(env, connector, actionName, args.input || {}, args.dry_run || false);
-  }
+  if (connector.mode === "child_worker") return callChildWorkerConnector(env, connector, actionName, args.input || {}, args.dry_run || false);
 
-  const action = await db.prepare(
-    "SELECT * FROM connector_actions WHERE connector_id = ? AND action_name = ?",
-  ).bind(connectorId, actionName).first<ActionRow>();
+  const action = await db.prepare("SELECT * FROM connector_actions WHERE connector_id = ? AND action_name = ?").bind(connectorId, actionName).first<ActionRow>();
   if (!action) throw new Error(biInline("Connector action not found.", "Дію конектора не знайдено."));
 
   const result = await callInternalAction(env, action, args.input || {}, args.dry_run || false);
@@ -305,76 +219,82 @@ export async function callConnectorTool(env: Env, args: z.infer<z.ZodObject<type
   return result;
 }
 
+async function saveConnectorAction(db: D1Database, connectorId: string, action: z.infer<typeof actionSchema>, now: number): Promise<void> {
+  const actionName = normalizeKey(action.name);
+  validateTemplatedUrl(action.url);
+  validateAuth(action.auth as AuthConfig);
+  validateSafeHeaders(action.headers || {});
+
+  await db.prepare(
+    `INSERT INTO connector_actions
+     (connector_id, action_name, description, method, url, auth_json, headers_json, query_json, body_template_json, input_schema_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    connectorId,
+    actionName,
+    action.description || null,
+    action.method || "POST",
+    action.url,
+    JSON.stringify(action.auth || { type: "none" }),
+    JSON.stringify(action.headers || {}),
+    JSON.stringify(action.query || {}),
+    action.body_template === undefined ? null : JSON.stringify(action.body_template),
+    action.input_schema === undefined ? null : JSON.stringify(action.input_schema),
+    now,
+    now,
+  ).run();
+}
+
 async function callInternalAction(env: Env, action: ActionRow, input: JsonObject, dryRun: boolean) {
   assertUrlTemplateInput(action.url, input);
   const url = assertSafeOutboundUrl(renderUrlString(action.url, input));
   const method = action.method.toUpperCase();
-  const headers = new Headers();
-  headers.set("accept", "application/json, text/plain;q=0.9, */*;q=0.1");
+  const headers = new Headers({ accept: "application/json, text/plain;q=0.9, */*;q=0.1" });
 
   const customHeaders = parseJsonObject(action.headers_json);
   validateSafeHeaders(customHeaders);
-  for (const [key, value] of Object.entries(customHeaders)) {
-    headers.set(key, renderScalar(value, input));
-  }
+  for (const [key, value] of Object.entries(customHeaders)) headers.set(key, renderScalar(value, input));
 
   const query = parseJsonObject(action.query_json);
-  for (const [key, value] of Object.entries(query)) {
-    url.searchParams.set(key, renderScalar(value, input));
-  }
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, renderScalar(value, input));
 
-  const auth = parseJson<AuthConfig>(action.auth_json, { type: "none" });
-  await applyAuth(env, url, headers, auth);
+  await applyConnectorAuth(env, url, headers, parseJson<AuthConfig>(action.auth_json, { type: "none" }));
 
-  let body: string | undefined;
-  if (!["GET", "DELETE"].includes(method) && action.body_template_json) {
-    const template = JSON.parse(action.body_template_json) as unknown;
-    const rendered = renderTemplate(template, input);
-    body = typeof rendered === "string" ? rendered : JSON.stringify(rendered);
-    if (!headers.has("content-type")) headers.set("content-type", "application/json; charset=utf-8");
-  }
-
+  const body = buildRequestBody(action, input, method, headers);
   const prepared = {
     method,
     url: redactUrlForOutput(url),
     headers: redactHeaders(headers),
-    body_preview: body ? truncate(body, 2000) : null,
+    body_preview: body ? truncate(body, 2_000) : null,
   };
 
   if (dryRun) return { ok: true, dry_run: true, prepared_request: prepared };
 
   const response = await fetch(url.toString(), { method, headers, body, redirect: "manual" });
   const text = await response.text();
-  return {
-    ok: response.ok,
-    request: prepared,
-    response: buildConnectorResponse(response, text),
-  };
+  return { ok: response.ok, request: prepared, response: buildConnectorResponse(response, text) };
+}
+
+function buildRequestBody(action: ActionRow, input: JsonObject, method: string, headers: Headers): string | undefined {
+  if (["GET", "DELETE"].includes(method) || !action.body_template_json) return undefined;
+  const template = JSON.parse(action.body_template_json) as unknown;
+  const rendered = renderTemplate(template, input);
+  if (!headers.has("content-type")) headers.set("content-type", "application/json; charset=utf-8");
+  return typeof rendered === "string" ? rendered : JSON.stringify(rendered);
 }
 
 async function callChildWorkerConnector(env: Env, connector: ConnectorRow, actionName: string, input: JsonObject, dryRun: boolean) {
   if (!connector.child_worker_url) throw new Error(biInline("Child Worker URL is not configured.", "URL child Worker не налаштований."));
-  const base = assertSafeOutboundUrl(connector.child_worker_url);
-  const endpoint = new URL("/tools/call", base);
+  const endpoint = new URL("/tools/call", assertSafeOutboundUrl(connector.child_worker_url));
   const headers = new Headers({ "content-type": "application/json; charset=utf-8" });
-  if (connector.child_worker_token_secret) {
-    validateSecretName(connector.child_worker_token_secret);
-    const token = getSecret(env, connector.child_worker_token_secret);
-    headers.set("x-oneaiworkers-child-token", token);
-  }
+  if (connector.child_worker_token_secret) headers.set("x-oneaiworkers-child-token", getSecret(env, connector.child_worker_token_secret));
 
   const payload = { name: actionName, arguments: input, dry_run: dryRun };
-  if (dryRun) {
-    return { ok: true, dry_run: true, child_worker_url: redactUrlForOutput(endpoint), payload };
-  }
+  if (dryRun) return { ok: true, dry_run: true, child_worker_url: redactUrlForOutput(endpoint), payload };
 
   const response = await fetch(endpoint.toString(), { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual" });
   const text = await response.text();
-  return {
-    ok: response.ok,
-    child_worker_url: redactUrlForOutput(endpoint),
-    response: buildConnectorResponse(response, text),
-  };
+  return { ok: response.ok, child_worker_url: redactUrlForOutput(endpoint), response: buildConnectorResponse(response, text) };
 }
 
 async function listActionsForConnector(env: Env, db: D1Database, connectorId: string) {
@@ -385,80 +305,20 @@ async function listActionsForConnector(env: Env, db: D1Database, connectorId: st
     method: row.method,
     url: redactTemplatedUrl(row.url),
     auth: publicAuth(parseJson<AuthConfig>(row.auth_json, { type: "none" }), env),
-    input_schema: row.input_schema_json ? JSON.parse(row.input_schema_json) : null,
+    input_schema: row.input_schema_json ? parseJson<unknown>(row.input_schema_json, null) : null,
   }));
 }
 
-function buildConnectorResponse(response: Response, text: string) {
-  const contentType = response.headers.get("content-type");
-  const parsedJson = parseJsonMaybe(text);
-  const bodyKind = parsedJson.ok ? "json" : "text";
-  const jsonSummary = parsedJson.ok ? summarizeJson(parsedJson.value) : null;
-  const jsonPreview = parsedJson.ok ? compactJson(parsedJson.value) : null;
-  return {
-    status: response.status,
-    status_text: response.statusText,
-    ok: response.ok,
-    content_type: contentType,
-    body_kind: bodyKind,
-    summary: jsonSummary,
-    json_preview: jsonPreview,
-    text_preview: parsedJson.ok ? null : truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
-    raw_text_preview: truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
-    truncated: text.length > MAX_RESPONSE_PREVIEW_TEXT,
-  };
+function collectRequiredSecrets(env: Env, actions: ActionRow[]) {
+  const secretNames = new Set<string>();
+  for (const action of actions) for (const name of getAuthSecretNames(parseJson<AuthConfig>(action.auth_json, { type: "none" }))) secretNames.add(name);
+  return [...secretNames].sort().map((name) => ({ name, configured: isSecretConfigured(env, name), value: "[hidden]" }));
 }
 
-function parseJsonMaybe(text: string): { ok: true; value: unknown } | { ok: false } {
-  try {
-    return { ok: true, value: JSON.parse(text) as unknown };
-  } catch {
-    return { ok: false };
-  }
-}
-
-function summarizeJson(value: unknown): JsonObject {
-  if (Array.isArray(value)) {
-    return {
-      root_type: "array",
-      item_count: value.length,
-      first_item_keys: value[0] && typeof value[0] === "object" && !Array.isArray(value[0]) ? Object.keys(value[0] as JsonObject).slice(0, 30) : [],
-    };
-  }
-  if (value && typeof value === "object") {
-    const objectValue = value as JsonObject;
-    const keys = Object.keys(objectValue);
-    const arrays: JsonObject = {};
-    for (const key of keys) {
-      const child = objectValue[key];
-      if (Array.isArray(child)) arrays[key] = { item_count: child.length };
-    }
-    return {
-      root_type: "object",
-      top_level_keys: keys.slice(0, 50),
-      array_fields: arrays,
-    };
-  }
-  return { root_type: value === null ? "null" : typeof value };
-}
-
-function compactJson(value: unknown, depth = 0): unknown {
-  if (depth > MAX_JSON_DEPTH) return "[max depth reached]";
-  if (typeof value === "string") return truncate(value, 2000);
-  if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
-  if (Array.isArray(value)) {
-    const items = value.slice(0, MAX_JSON_ARRAY_ITEMS).map((item) => compactJson(item, depth + 1));
-    if (value.length > MAX_JSON_ARRAY_ITEMS) items.push(`[...${value.length - MAX_JSON_ARRAY_ITEMS} more items]`);
-    return items;
-  }
-  if (value && typeof value === "object") {
-    const out: JsonObject = {};
-    const entries = Object.entries(value as JsonObject);
-    for (const [key, child] of entries.slice(0, MAX_JSON_OBJECT_KEYS)) out[key] = compactJson(child, depth + 1);
-    if (entries.length > MAX_JSON_OBJECT_KEYS) out.__truncated_keys = entries.length - MAX_JSON_OBJECT_KEYS;
-    return out;
-  }
-  return String(value);
+function validateChildWorkerConfig(childWorkerUrl?: string, childWorkerTokenSecret?: string): void {
+  if (!childWorkerUrl) throw new Error(biInline("child_worker_url is required for child_worker mode.", "Для режиму child_worker потрібен child_worker_url."));
+  assertSafeOutboundUrl(childWorkerUrl);
+  if (childWorkerTokenSecret) validateSecretName(childWorkerTokenSecret);
 }
 
 function publicConnector(row: ConnectorRow) {
@@ -466,7 +326,7 @@ function publicConnector(row: ConnectorRow) {
     connector_id: row.connector_id,
     name: row.name,
     description: row.description,
-    mode: row.mode,
+    mode: row.mode as ConnectorMode,
     child_worker_url: row.child_worker_url ? redactUrlForOutput(assertSafeOutboundUrl(row.child_worker_url)) : null,
     child_worker_token_secret: row.child_worker_token_secret || null,
     enabled: Boolean(row.enabled),
@@ -474,326 +334,8 @@ function publicConnector(row: ConnectorRow) {
   };
 }
 
-async function applyAuth(env: Env, url: URL, headers: Headers, auth: AuthConfig) {
-  if (!auth || auth.type === "none") return;
-  validateAuth(auth);
-
-  if (auth.type === "bearer_secret") {
-    headers.set("authorization", `Bearer ${getSecret(env, auth.secret_name)}`);
-    return;
-  }
-  if (auth.type === "auth_header_secret") {
-    const scheme = auth.scheme || "Bearer";
-    headers.set("authorization", `${scheme} ${getSecret(env, auth.secret_name)}`);
-    return;
-  }
-  if (auth.type === "api_key_header_secret") {
-    headers.set(auth.header_name, getSecret(env, auth.secret_name));
-    return;
-  }
-  if (auth.type === "api_key_query_secret") {
-    url.searchParams.set(auth.query_name, getSecret(env, auth.secret_name));
-    return;
-  }
-  if (auth.type === "basic_secret") {
-    headers.set("authorization", `Basic ${btoa(`${auth.username || ""}:${getSecret(env, auth.secret_name)}`)}`);
-    return;
-  }
-  if (auth.type === "basic_secret_pair") {
-    const username = getSecret(env, auth.username_secret_name);
-    const password = getSecret(env, auth.password_secret_name);
-    headers.set("authorization", `Basic ${btoa(`${username}:${password}`)}`);
-    return;
-  }
-  if (auth.type === "oauth2_client_credentials") {
-    const token = await fetchOAuthAccessToken(env, {
-      grant_type: "client_credentials",
-      token_url: auth.token_url,
-      client_id_secret_name: auth.client_id_secret_name,
-      client_secret_secret_name: auth.client_secret_secret_name,
-      scope: auth.scope,
-      audience: auth.audience,
-      client_auth_method: auth.client_auth_method || "body",
-      access_token_field: auth.access_token_field || "access_token",
-    });
-    headers.set("authorization", `${auth.token_type || "Bearer"} ${token}`);
-    return;
-  }
-  if (auth.type === "oauth2_refresh_token") {
-    const token = await fetchOAuthAccessToken(env, {
-      grant_type: "refresh_token",
-      token_url: auth.token_url,
-      refresh_token_secret_name: auth.refresh_token_secret_name,
-      client_id_secret_name: auth.client_id_secret_name,
-      client_secret_secret_name: auth.client_secret_secret_name,
-      scope: auth.scope,
-      client_auth_method: auth.client_auth_method || "body",
-      access_token_field: auth.access_token_field || "access_token",
-    });
-    headers.set("authorization", `${auth.token_type || "Bearer"} ${token}`);
-    return;
-  }
-  if (auth.type === "google_oauth2_refresh_token") {
-    const token = await fetchOAuthAccessToken(env, {
-      grant_type: "refresh_token",
-      token_url: "https://oauth2.googleapis.com/token",
-      refresh_token_secret_name: auth.refresh_token_secret_name,
-      client_id_secret_name: auth.client_id_secret_name,
-      client_secret_secret_name: auth.client_secret_secret_name,
-      scope: auth.scope,
-      client_auth_method: "body",
-      access_token_field: "access_token",
-    });
-    headers.set("authorization", `Bearer ${token}`);
-  }
-}
-
-function renderUrlString(template: string, input: JsonObject): string {
-  return renderString(template, input);
-}
-
-function validateTemplatedUrl(template: string) {
-  assertSafeOutboundUrl(templateUrlForValidation(template));
-}
-
-function assertUrlTemplateInput(template: string, input: JsonObject) {
-  const missing = templateKeys(template).filter((key) => getPath(input, key) === undefined || getPath(input, key) === null || getPath(input, key) === "");
-  if (missing.length) {
-    throw new Error(`${biInline("Missing input values for URL template", "Бракує input значень для URL template")}: ${missing.join(", ")}`);
-  }
-}
-
-function templateKeys(template: string): string[] {
-  return Array.from(template.matchAll(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g)).map((match) => match[1]);
-}
-
-function templateUrlForValidation(template: string): string {
-  return template.replace(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g, (_match, path: string) => {
-    const lower = path.toLowerCase();
-    if (lower.includes("token") || lower.includes("secret") || lower.includes("password") || lower.includes("key")) return "REDACTED";
-    return "example";
-  });
-}
-
-function redactTemplatedUrl(template: string): string {
-  return template.replace(/([?&][^=]*(?:token|key|secret|password|auth|signature)[^=]*=)([^&]+)/gi, "$1[redacted]");
-}
-
-function getSecret(env: Env, name: string): string {
-  validateSecretName(name);
-  const value = (env as Record<string, unknown>)[name];
-  if (typeof value !== "string" || !value) {
-    throw new Error(`${biInline("Secret is not configured", "Secret не налаштований")}: ${name}`);
-  }
-  return value;
-}
-
-interface OAuthTokenRequestConfig {
-  grant_type: "client_credentials" | "refresh_token";
-  token_url: string;
-  client_id_secret_name?: string;
-  client_secret_secret_name?: string;
-  refresh_token_secret_name?: string;
-  scope?: string;
-  audience?: string;
-  client_auth_method: OAuthClientAuthMethod;
-  access_token_field: string;
-}
-
-async function fetchOAuthAccessToken(env: Env, config: OAuthTokenRequestConfig): Promise<string> {
-  const tokenUrl = assertSafeOutboundUrl(config.token_url);
-  const body = new URLSearchParams();
-  body.set("grant_type", config.grant_type);
-  if (config.scope) body.set("scope", config.scope);
-  if (config.audience) body.set("audience", config.audience);
-  if (config.refresh_token_secret_name) body.set("refresh_token", getSecret(env, config.refresh_token_secret_name));
-
-  const clientId = config.client_id_secret_name ? getSecret(env, config.client_id_secret_name) : "";
-  const clientSecret = config.client_secret_secret_name ? getSecret(env, config.client_secret_secret_name) : "";
-  const headers = new Headers({
-    "accept": "application/json",
-    "content-type": "application/x-www-form-urlencoded; charset=utf-8",
-  });
-
-  if (config.client_auth_method === "basic" && clientId && clientSecret) {
-    headers.set("authorization", `Basic ${btoa(`${clientId}:${clientSecret}`)}`);
-  } else {
-    if (clientId) body.set("client_id", clientId);
-    if (clientSecret) body.set("client_secret", clientSecret);
-  }
-
-  const response = await fetch(tokenUrl.toString(), { method: "POST", headers, body, redirect: "manual" });
-  const payload = await response.json().catch(() => null) as JsonObject | null;
-  if (!response.ok || !payload) {
-    throw new Error(`${biInline("OAuth token request failed", "OAuth token запит не вдався")}: ${response.status}`);
-  }
-
-  const token = payload[config.access_token_field];
-  if (typeof token !== "string" || !token) {
-    throw new Error(biInline("OAuth token response does not include an access token.", "OAuth token відповідь не містить access token."));
-  }
-  return token;
-}
-
-function validateAuth(auth: AuthConfig) {
-  if (!auth || auth.type === "none") return;
-
-  if (auth.type === "bearer_secret" || auth.type === "auth_header_secret" || auth.type === "api_key_header_secret" || auth.type === "api_key_query_secret" || auth.type === "basic_secret") {
-    validateSecretName(auth.secret_name);
-  }
-  if (auth.type === "basic_secret_pair") {
-    validateSecretName(auth.username_secret_name);
-    validateSecretName(auth.password_secret_name);
-  }
-  if (auth.type === "oauth2_client_credentials") {
-    assertSafeOutboundUrl(auth.token_url);
-    validateSecretName(auth.client_id_secret_name);
-    validateSecretName(auth.client_secret_secret_name);
-    validateTokenOptions(auth.client_auth_method, auth.access_token_field, auth.token_type);
-  }
-  if (auth.type === "oauth2_refresh_token") {
-    assertSafeOutboundUrl(auth.token_url);
-    validateSecretName(auth.refresh_token_secret_name);
-    if (auth.client_id_secret_name) validateSecretName(auth.client_id_secret_name);
-    if (auth.client_secret_secret_name) validateSecretName(auth.client_secret_secret_name);
-    validateTokenOptions(auth.client_auth_method, auth.access_token_field, auth.token_type);
-  }
-  if (auth.type === "google_oauth2_refresh_token") {
-    validateSecretName(auth.client_id_secret_name);
-    validateSecretName(auth.client_secret_secret_name);
-    validateSecretName(auth.refresh_token_secret_name);
-  }
-  if (auth.type === "auth_header_secret") validateAuthScheme(auth.scheme || "Bearer");
-  if (auth.type === "api_key_header_secret") validateHeaderName(auth.header_name);
-  if (auth.type === "api_key_query_secret" && !/^[A-Za-z0-9_.-]{1,80}$/.test(auth.query_name)) throw new Error(biInline("Invalid query key name.", "Некоректна назва query key."));
-}
-
-function validateSecretName(name: string) {
-  if (!/^[A-Z][A-Z0-9_]{1,80}$/.test(name)) {
-    throw new Error(biInline("Secret name must use uppercase letters, numbers, and underscores.", "Назва secret має містити великі літери, цифри й підкреслення."));
-  }
-}
-
-function validateTokenOptions(clientAuthMethod?: OAuthClientAuthMethod, accessTokenField?: string, tokenType?: string) {
-  if (clientAuthMethod && !["basic", "body"].includes(clientAuthMethod)) throw new Error(biInline("Invalid OAuth client auth method.", "Некоректний OAuth client auth method."));
-  if (accessTokenField && !/^[A-Za-z0-9_.-]{1,80}$/.test(accessTokenField)) throw new Error(biInline("Invalid OAuth access token field.", "Некоректне OAuth access token field."));
-  if (tokenType) validateAuthScheme(tokenType);
-}
-
-function validateAuthScheme(value: string) {
-  if (!/^[A-Za-z][A-Za-z0-9._-]{0,29}$/.test(value)) throw new Error(biInline("Invalid authorization scheme.", "Некоректна authorization scheme."));
-}
-
-function validateHeaderName(name: string) {
-  const lower = name.toLowerCase();
-  if (!/^[a-z0-9-]{2,80}$/i.test(name) || ["authorization", "cookie", "set-cookie", "host"].includes(lower)) {
-    throw new Error(biInline("This header name is not allowed.", "Ця назва header не дозволена."));
-  }
-}
-
-function validateSafeHeaders(headers: Record<string, unknown>) {
-  for (const key of Object.keys(headers)) validateHeaderName(key);
-}
-
-function renderTemplate(value: unknown, input: JsonObject, depth = 0): unknown {
-  if (depth > MAX_TEMPLATE_DEPTH) throw new Error(biInline("Template is too deep.", "Шаблон занадто глибокий."));
-  if (typeof value === "string") return renderString(value, input);
-  if (Array.isArray(value)) return value.map((item) => renderTemplate(item, input, depth + 1));
-  if (value && typeof value === "object") {
-    const out: JsonObject = {};
-    for (const [key, child] of Object.entries(value as JsonObject)) out[key] = renderTemplate(child, input, depth + 1);
-    return out;
-  }
-  return value;
-}
-
-function renderScalar(value: unknown, input: JsonObject): string {
-  if (typeof value === "string") return renderString(value, input);
-  if (value === null || value === undefined) return "";
-  return String(value);
-}
-
-function renderString(template: string, input: JsonObject): string {
-  return template.replace(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g, (_match, path: string) => {
-    const value = getPath(input, path);
-    if (value === undefined || value === null) return "";
-    return typeof value === "string" ? value : JSON.stringify(value);
-  });
-}
-
-function getPath(input: JsonObject, path: string): unknown {
-  return path.split(".").reduce<unknown>((current, part) => {
-    if (current && typeof current === "object" && !Array.isArray(current)) return (current as JsonObject)[part];
-    return undefined;
-  }, input);
-}
-
-function parseJsonObject(value: string): JsonObject {
-  return parseJson<JsonObject>(value, {});
-}
-
-function parseJson<T>(value: string, fallback: T): T {
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function publicAuth(auth: AuthConfig, env: Env) {
-  if (!auth || auth.type === "none") return { type: "none" };
-  const secretNames = getAuthSecretNames(auth);
-  return {
-    type: auth.type,
-    ...publicAuthDetails(auth),
-    secrets: secretNames.map((name) => ({
-      name,
-      configured: isSecretConfigured(env, name),
-      value: "[hidden]",
-    })),
-  };
-}
-
-function publicAuthDetails(auth: AuthConfig): JsonObject {
-  if (auth.type === "api_key_header_secret") return { header_name: auth.header_name };
-  if (auth.type === "api_key_query_secret") return { query_name: auth.query_name };
-  if (auth.type === "auth_header_secret") return { scheme: auth.scheme || "Bearer" };
-  if (auth.type === "oauth2_client_credentials" || auth.type === "oauth2_refresh_token") {
-    return {
-      token_url: redactTemplatedUrl(auth.token_url),
-      scope: auth.scope || null,
-      audience: "audience" in auth ? auth.audience || null : null,
-      client_auth_method: auth.client_auth_method || "body",
-    };
-  }
-  if (auth.type === "google_oauth2_refresh_token") return { token_url: "https://oauth2.googleapis.com/token", scope: auth.scope || null };
-  return {};
-}
-
-function getAuthSecretNames(auth: AuthConfig): string[] {
-  if (auth.type === "bearer_secret" || auth.type === "auth_header_secret" || auth.type === "api_key_header_secret" || auth.type === "api_key_query_secret" || auth.type === "basic_secret") return [auth.secret_name];
-  if (auth.type === "basic_secret_pair") return [auth.username_secret_name, auth.password_secret_name];
-  if (auth.type === "oauth2_client_credentials") return [auth.client_id_secret_name, auth.client_secret_secret_name];
-  if (auth.type === "oauth2_refresh_token") return [auth.refresh_token_secret_name, auth.client_id_secret_name, auth.client_secret_secret_name].filter(Boolean) as string[];
-  if (auth.type === "google_oauth2_refresh_token") return [auth.client_id_secret_name, auth.client_secret_secret_name, auth.refresh_token_secret_name];
-  return [];
-}
-
-function isSecretConfigured(env: Env, name: string): boolean {
-  const value = (env as Record<string, unknown>)[name];
-  return typeof value === "string" && value.length > 0;
-}
-
-function redactHeaders(headers: Headers) {
-  const out: Record<string, string> = {};
-  for (const [key, value] of headers.entries()) {
-    out[key] = /authorization|token|key|secret|cookie/i.test(key) ? "[redacted]" : value;
-  }
-  return out;
-}
-
-function truncate(value: string, max: number): string {
-  return value.length > max ? `${value.slice(0, max)}\n...[truncated]` : value;
+function normalizeKey(value: string): string {
+  return safeKey(value).replaceAll(":", "-");
 }
 
 function getDb(env: Env): D1Database {
@@ -804,7 +346,7 @@ function getDb(env: Env): D1Database {
 async function audit(db: D1Database, connectorId: string | null, actionName: string | null, event: string, ok: boolean, message: string) {
   await db.prepare(
     "INSERT INTO connector_audit_log (id, connector_id, action_name, event, ok, message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  ).bind(crypto.randomUUID(), connectorId, actionName, event, ok ? 1 : 0, message, nowSeconds()).run();
+  ).bind(crypto.randomUUID(), connectorId, actionName, event, ok ? 1 : 0, message.slice(0, MAX_RESPONSE_TEXT), nowSeconds()).run();
 }
 
 function nowSeconds(): number {
