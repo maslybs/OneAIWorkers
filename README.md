@@ -1,58 +1,220 @@
 # OneAIWorkers
 
+[Українська версія](README.uk.md)
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
 
-[Ukrainian version](README.uk.md)
+OneAIWorkers gives your AI assistant safe hands.
 
-OneAIWorkers is a small Cloudflare Worker that gives an AI assistant a few safe actions it can use through MCP.
+Your AI assistant can read, think, remember, plan, and decide. OneAIWorkers gives it a safe way to do real actions: check a website, read an RSS feed, send a Telegram message, call a webhook, connect to an API, or create a separate Worker for a special task.
 
-```text
-AI assistant = remembers, plans, decides
-Worker = does the safe actions
-```
-
-The code is TypeScript and is split into small files, so it is easier to read and maintain.
-
-## Easiest install
-
-Click **Deploy to Cloudflare** at the top of this page.
-
-Cloudflare will copy this public repository, set up the Worker, and deploy it to your Cloudflare account.
-
-After deployment, connect this MCP URL to ChatGPT or another MCP client:
+You connect one MCP URL to ChatGPT or another MCP client. Behind that one URL, OneAIWorkers can expose many tools and connectors.
 
 ```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
+AI assistant → OneAIWorkers MCP → your tools, APIs, webhooks, and child Workers
 ```
 
-Full guide: [`docs/DEPLOY_TO_CLOUDFLARE.md`](docs/DEPLOY_TO_CLOUDFLARE.md).
+## When this is useful
 
-## Manual install
+OneAIWorkers is useful when you want your AI assistant to do small real-world tasks without giving it direct access to everything.
 
-```bash
-npm install
-npx wrangler login
-npm run deploy
-```
-
-## Private access
-
-For ChatGPT, use **OAuth** in the app settings. OneAIWorkers stores OAuth clients and tokens in a small D1 database that Cloudflare creates during deploy.
-
-For extra protection, add a shared secret. During OAuth connection, the user will enter this secret once:
-
-```bash
-npx wrangler secret put MCP_SHARED_SECRET
-npm run deploy
-```
-
-For manual shared-secret access, connect with:
+Examples:
 
 ```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
+Check my website every morning and tell me in Telegram if it is down.
 ```
 
-## What it can do
+```text
+Read this RSS feed and send me only important updates.
+```
+
+```text
+When I ask, create a lead in my CRM using its API.
+```
+
+```text
+Send a webhook to Make, Zapier, or n8n when a customer fills a form.
+```
+
+```text
+Build a small custom Worker that parses a page and exposes it as a tool.
+```
+
+```text
+Create a simple bot or API bridge as a separate child Worker.
+```
+
+The goal is not to replace your AI assistant. The goal is to give it a safe action layer.
+
+## How it works
+
+OneAIWorkers has two modes.
+
+### 1. Basic mode
+
+This is the default mode. It works after one-click deploy.
+
+The main Worker stores connector settings in D1 and executes API calls itself.
+
+Use this for:
+
+```text
+REST APIs
+CRMs
+billing systems
+webhooks
+Telegram, Discord, Slack messages
+simple internal tools
+Make, Zapier, n8n
+```
+
+The AI does not need to know your real API keys. It only knows the name of the secret.
+
+Example:
+
+```text
+Secret name: CRM_API_TOKEN
+Real value: hidden inside Cloudflare Secrets
+```
+
+The connector can then say:
+
+```json
+{
+  "auth": {
+    "type": "bearer_secret",
+    "secret_name": "CRM_API_TOKEN"
+  }
+}
+```
+
+OneAIWorkers reads the real secret only when it makes the API call.
+
+### 2. Advanced mode: Worker Builder
+
+This mode is for special cases.
+
+The main Worker can create a separate child Worker through the Cloudflare API. This is useful when a connector needs its own code, its own public endpoint, a bot-like flow, a parser, or special logic.
+
+Use this for:
+
+```text
+custom bots
+custom parsers
+special webhook receivers
+API bridges with complex logic
+separate tools that should be isolated from the main Worker
+```
+
+This mode needs:
+
+```text
+CF_ACCOUNT_ID
+CF_API_TOKEN
+CF_WORKERS_DEV_SUBDOMAIN optional
+```
+
+These are not needed for the first setup. Add them only when you want OneAIWorkers to create extra Workers.
+
+Custom code should be reviewed before deploy. OneAIWorkers blocks some dangerous JavaScript patterns, but this is not a full security audit. Treat Worker Builder as an advanced feature.
+
+## What is created during install
+
+The deploy button installs the main Worker.
+
+Cloudflare can also create the D1 database from `wrangler.toml`.
+
+The D1 database is used for:
+
+```text
+OAuth clients
+OAuth tokens
+connector registry
+connector actions
+audit records
+```
+
+It is not used as AI memory. Your AI assistant keeps the memory and schedule. OneAIWorkers stores only the settings it needs to work.
+
+## Quick start
+
+### Step 1. Deploy
+
+Click the button:
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
+
+Cloudflare will ask you to connect your account and deploy the Worker.
+
+During deploy you may see optional fields. You can leave them empty and add them later.
+
+Recommended field:
+
+```text
+MCP_SHARED_SECRET
+```
+
+Optional fields:
+
+```text
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID
+DISCORD_WEBHOOK_URL
+SLACK_WEBHOOK_URL
+DEFAULT_WEBHOOK_URL
+CF_ACCOUNT_ID
+CF_API_TOKEN
+CF_WORKERS_DEV_SUBDOMAIN
+PUBLIC_BASE_URL
+```
+
+### Step 2. Add a shared secret
+
+This is recommended.
+
+`MCP_SHARED_SECRET` is a private password. OneAIWorkers asks for it during OAuth connection. It can also be used for manual access with `?key=`.
+
+Use a long random value.
+
+You can add it during deploy or later in Cloudflare:
+
+```text
+Cloudflare dashboard
+→ Workers & Pages
+→ your OneAIWorkers Worker
+→ Settings
+→ Variables and Secrets
+→ Add Secret
+```
+
+### Step 3. Connect ChatGPT
+
+In ChatGPT Developer Mode, add a custom MCP app.
+
+Use:
+
+```text
+Authentication: OAuth
+Server URL: https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
+```
+
+Do not add `?key=` when you use OAuth.
+
+When ChatGPT opens the connection page, enter your `MCP_SHARED_SECRET` if you set one.
+
+### Step 4. Ask for status
+
+After connection, ask:
+
+```text
+Show OneAIWorkers status.
+```
+
+The AI should call `hub_info` and show what is configured.
+
+## Built-in tools
+
+OneAIWorkers includes these tools:
 
 ```text
 hub_info
@@ -62,45 +224,215 @@ fetch_rss
 check_url_status
 send_notification
 call_webhook
+save_connector
+list_connectors
+test_connector
+call_connector_tool
+delete_connector
 create_child_worker_from_template
+deploy_custom_child_worker
 ```
 
-In simple words, it can:
+## Basic connector example
 
-- read public web pages;
-- read RSS feeds;
-- check if a website is working;
-- send a message to Telegram, Discord, Slack, or a webhook;
-- call a webhook in Make, Zapier, n8n, or your own system;
-- create a small child Worker from a safe template.
+Imagine you have a CRM API.
 
-## Main files
+The CRM docs say:
 
 ```text
-src/index.ts              Worker entrypoint and HTTP routes
-src/server.ts             MCP tool registration
-src/tools/observe.ts      page reading, RSS, status checks
-src/tools/notify.ts       notifications and webhooks
-src/tools/factory.ts      safe child Worker creation
-src/auth.ts               shared-secret access
-src/security.ts           URL and key safety helpers
-src/i18n.ts               runtime text helpers
-docs/                     user and developer guides
+POST https://api.example-crm.com/v1/leads
+Authorization: Bearer YOUR_API_TOKEN
+Body: { "name": "...", "email": "..." }
 ```
 
-## What it does not do
+First, add your real API token to Cloudflare Secrets:
 
-- It does not store memory for the AI assistant.
-- It does not use a database for AI memory. D1 is used only for OAuth clients and tokens.
-- It does not run arbitrary code created by AI.
-- It does not include full user accounts, billing, or OAuth.
+```text
+CRM_API_TOKEN = real token from your CRM
+```
 
-## Development
+Then tell your AI assistant:
+
+```text
+Create a OneAIWorkers connector called crm.
+It should have one action: create_lead.
+Use POST https://api.example-crm.com/v1/leads.
+Use bearer_secret with secret_name CRM_API_TOKEN.
+Body fields: name and email.
+```
+
+The AI can create this connector through `save_connector`.
+
+After that you can say:
+
+```text
+Create a CRM lead for Anna Smith, anna@example.com.
+```
+
+The AI calls:
+
+```text
+call_connector_tool
+connector_id: crm
+action_name: create_lead
+input: { name: "Anna Smith", email: "anna@example.com" }
+```
+
+OneAIWorkers sends the request to the CRM. The real API token stays hidden in Cloudflare Secrets.
+
+## Advanced child Worker example
+
+Use child Workers only when a simple API connector is not enough.
+
+Example tasks:
+
+```text
+Make a small parser that reads a page and returns clean product data.
+```
+
+```text
+Make a webhook receiver that verifies a signature and then calls another API.
+```
+
+```text
+Make a small bot endpoint with custom logic.
+```
+
+To enable this mode, add these secrets/settings to the main Worker:
+
+```text
+CF_ACCOUNT_ID
+CF_API_TOKEN
+CF_WORKERS_DEV_SUBDOMAIN optional
+```
+
+Then ask the AI:
+
+```text
+Create a child Worker for this parser.
+Show me the code and explain what it does before deploying.
+```
+
+After review, the AI can call `deploy_custom_child_worker`.
+
+The child Worker exposes:
+
+```text
+/health
+/tools/list
+/tools/call
+```
+
+Then save it as a connector using `save_connector` with:
+
+```text
+mode: child_worker
+child_worker_url: https://child-worker.your-subdomain.workers.dev
+child_worker_token_secret: CHILD_WORKER_TOKEN
+```
+
+The child token is shown once after deploy. Store it as a Cloudflare Secret, for example:
+
+```text
+CHILD_WORKER_TOKEN
+```
+
+Then the main Worker can route tool calls to that child Worker.
+
+## Notifications
+
+Telegram needs:
+
+```text
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID
+```
+
+Discord needs:
+
+```text
+DISCORD_WEBHOOK_URL
+```
+
+Slack needs:
+
+```text
+SLACK_WEBHOOK_URL
+```
+
+Generic webhook needs:
+
+```text
+DEFAULT_WEBHOOK_URL
+```
+
+You can add these during deploy or later in Cloudflare settings.
+
+## Security model
+
+OneAIWorkers follows a few simple rules:
+
+```text
+Secrets stay in Cloudflare Secrets.
+The AI sees secret names, not secret values.
+Only HTTPS URLs are allowed.
+Local/private network URLs are blocked.
+Connector actions are stored in D1.
+OAuth tokens are stored in D1.
+Child Workers are optional.
+Custom child Worker code should be reviewed before deploy.
+```
+
+For simple API access, use basic connectors.
+
+For unusual logic, use child Workers.
+
+## Local development
 
 ```bash
+npm install
 npm run dev
+```
+
+For local secrets, copy:
+
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+Then fill only the values you need.
+
+Run type check:
+
+```bash
 npm run typecheck
+```
+
+Deploy manually:
+
+```bash
 npm run deploy
+```
+
+## Recommended first setup
+
+Start with this:
+
+```text
+MCP_SHARED_SECRET
+```
+
+Then connect ChatGPT with OAuth.
+
+Add integrations only when you need them:
+
+```text
+Telegram messages → TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
+Discord messages → DISCORD_WEBHOOK_URL
+Slack messages → SLACK_WEBHOOK_URL
+Make/Zapier/n8n → DEFAULT_WEBHOOK_URL or a saved connector
+Custom API → add API secret, then create a connector
+Custom code → enable Worker Builder
 ```
 
 ## License

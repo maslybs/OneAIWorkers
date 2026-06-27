@@ -75,7 +75,21 @@ export default {
             "LLM owns memory, scheduling, and reasoning. Worker executes safe actions.",
             "LLM відповідає за памʼять, розклад і reasoning. Worker виконує безпечні дії.",
           ),
-          tools: ["fetch_url", "fetch_many_urls", "fetch_rss", "check_url_status", "send_notification", "call_webhook", "create_child_worker_from_template"],
+          tools: [
+            "fetch_url",
+            "fetch_many_urls",
+            "fetch_rss",
+            "check_url_status",
+            "send_notification",
+            "call_webhook",
+            "save_connector",
+            "list_connectors",
+            "test_connector",
+            "call_connector_tool",
+            "delete_connector",
+            "create_child_worker_from_template",
+            "deploy_custom_child_worker",
+          ],
           authentication: isOAuthEnabled(env)
             ? bilingualObject(
                 "OAuth is enabled. MCP also accepts MCP_SHARED_SECRET if configured.",

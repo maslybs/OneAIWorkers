@@ -42,7 +42,7 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 
 ## Private access
 
-The Worker supports OAuth for ChatGPT. OAuth clients and tokens are stored in D1, which Cloudflare creates during deployment.
+The Worker supports OAuth for ChatGPT. OAuth, connectors, connector actions, and audit records are stored in D1, which Cloudflare creates during deployment.
 
 The Worker can run without secrets. That is fine for a first test, but anyone who can complete the OAuth flow could connect.
 

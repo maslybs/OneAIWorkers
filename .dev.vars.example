@@ -19,7 +19,13 @@ SLACK_WEBHOOK_URL=
 # Optional. Fill only if you want a default Make/Zapier/n8n/custom webhook.
 DEFAULT_WEBHOOK_URL=
 
-# Optional. Needed only for child Worker creation.
+# Optional. Needed only for Worker Builder / child Workers.
 CF_ACCOUNT_ID=
 CF_API_TOKEN=
 CF_WORKERS_DEV_SUBDOMAIN=
+
+# Optional examples for saved custom API connectors.
+# Add your own uppercase secret names as needed.
+# CRM_API_TOKEN=
+# BILLING_API_KEY=
+# CHILD_WORKER_TOKEN=

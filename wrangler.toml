@@ -3,6 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-06-27"
 compatibility_flags = ["nodejs_compat"]
 
+# D1 is used for OAuth, connector registry, connector actions, and audit records.
 [[d1_databases]]
 binding = "OAUTH_DB"
 database_name = "oneaiworkers-oauth"
@@ -19,6 +20,7 @@ HUB_NAME = "OneAIWorkers"
 # DISCORD_WEBHOOK_URL      - default Discord webhook URL
 # SLACK_WEBHOOK_URL        - default Slack webhook URL
 # DEFAULT_WEBHOOK_URL      - generic default webhook URL
-# CF_ACCOUNT_ID            - only needed for child Worker factory
-# CF_API_TOKEN             - only needed for child Worker factory
+# CF_ACCOUNT_ID            - only needed for Worker Builder / child Workers
+# CF_API_TOKEN             - only needed for Worker Builder / child Workers
 # CF_WORKERS_DEV_SUBDOMAIN - optional, for expected child workers.dev URLs
+# Custom API secrets can use any uppercase name, for example CRM_API_TOKEN.
