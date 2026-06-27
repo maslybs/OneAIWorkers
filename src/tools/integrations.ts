@@ -4,10 +4,10 @@ import { assertSafeOutboundUrl, redactUrlForOutput, safeKey } from "../security"
 import type { Env } from "../types";
 
 const MAX_RESPONSE_TEXT = 24_000;
-const MAX_RESPONSE_PREVIEW_TEXT = 8_000;
-const MAX_JSON_DEPTH = 8;
-const MAX_JSON_ARRAY_ITEMS = 50;
-const MAX_JSON_OBJECT_KEYS = 80;
+const MAX_RESPONSE_PREVIEW_TEXT = 4_000;
+const MAX_JSON_DEPTH = 6;
+const MAX_JSON_ARRAY_ITEMS = 12;
+const MAX_JSON_OBJECT_KEYS = 30;
 const MAX_TEMPLATE_DEPTH = 20;
 
 let schemaReady: Promise<void> | null = null;
@@ -393,14 +393,17 @@ function buildConnectorResponse(response: Response, text: string) {
   const contentType = response.headers.get("content-type");
   const parsedJson = parseJsonMaybe(text);
   const bodyKind = parsedJson.ok ? "json" : "text";
+  const jsonSummary = parsedJson.ok ? summarizeJson(parsedJson.value) : null;
+  const jsonPreview = parsedJson.ok ? compactJson(parsedJson.value) : null;
   return {
     status: response.status,
     status_text: response.statusText,
     ok: response.ok,
     content_type: contentType,
     body_kind: bodyKind,
-    json: parsedJson.ok ? compactJson(parsedJson.value) : null,
-    text: parsedJson.ok ? null : truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
+    summary: jsonSummary,
+    json_preview: jsonPreview,
+    text_preview: parsedJson.ok ? null : truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
     raw_text_preview: truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
     truncated: text.length > MAX_RESPONSE_PREVIEW_TEXT,
   };
@@ -412,6 +415,31 @@ function parseJsonMaybe(text: string): { ok: true; value: unknown } | { ok: fals
   } catch {
     return { ok: false };
   }
+}
+
+function summarizeJson(value: unknown): JsonObject {
+  if (Array.isArray(value)) {
+    return {
+      root_type: "array",
+      item_count: value.length,
+      first_item_keys: value[0] && typeof value[0] === "object" && !Array.isArray(value[0]) ? Object.keys(value[0] as JsonObject).slice(0, 30) : [],
+    };
+  }
+  if (value && typeof value === "object") {
+    const objectValue = value as JsonObject;
+    const keys = Object.keys(objectValue);
+    const arrays: JsonObject = {};
+    for (const key of keys) {
+      const child = objectValue[key];
+      if (Array.isArray(child)) arrays[key] = { item_count: child.length };
+    }
+    return {
+      root_type: "object",
+      top_level_keys: keys.slice(0, 50),
+      array_fields: arrays,
+    };
+  }
+  return { root_type: value === null ? "null" : typeof value };
 }
 
 function compactJson(value: unknown, depth = 0): unknown {
