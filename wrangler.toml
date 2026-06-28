@@ -29,3 +29,9 @@ HUB_NAME = "OneAIWorkers"
 # CF_API_TOKEN             - only needed for Worker Builder / child Workers
 # CF_WORKERS_DEV_SUBDOMAIN - optional, for expected child workers.dev URLs
 # Custom API secrets can use any uppercase name, for example CRM_API_TOKEN.
+
+# Optional production child Worker Service Binding example.
+# This keeps child Workers private and reachable only through the main OneAIWorkers gateway.
+# [[services]]
+# binding = "TELEGRAM_CHILD"
+# service = "telegram-child-connector"

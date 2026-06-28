@@ -45,6 +45,9 @@ export function createMcpServer(env: Env, request: Request): McpServer {
         "LLM відповідає за памʼять, планування й рішення. Worker валідує запити, читає secrets за назвою, викликає зовнішні API і повертає компактні структуровані результати.",
       ),
       connector_engine: {
+        gateway_endpoint: "/mcp",
+        child_workers_called_through_gateway_by_default: true,
+        supported_child_invocations: ["service_binding", "protected_url"],
         supported_http_methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
         supports_path_templates: true,
         supports_query_templates: true,

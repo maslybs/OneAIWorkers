@@ -84,6 +84,12 @@ export default {
               "google_oauth2_refresh_token",
             ],
             response_format: "structuredContent plus compact JSON summary/json_preview",
+            child_worker_model: {
+              default_route: "main_gateway_only",
+              main_gateway_tool: "call_connector_tool",
+              supported_invocations: ["service_binding", "protected_url"],
+              direct_child_url: "optional for advanced/manual use, not required for ChatGPT",
+            },
           },
           oauth: isOAuthEnabled(env)
             ? {

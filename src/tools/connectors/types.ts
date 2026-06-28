@@ -48,6 +48,7 @@ export interface ConnectorRow {
   description: string | null;
   mode: ConnectorMode;
   child_worker_url: string | null;
+  child_worker_binding: string | null;
   child_worker_token_secret: string | null;
   enabled: number;
   created_at: number;
