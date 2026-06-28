@@ -264,7 +264,7 @@ export function oauthUnauthorizedHeaders(request: Request, env: Env): Record<str
   if (!isOAuthEnabled(env)) return {};
   const baseUrl = (env.PUBLIC_BASE_URL || new URL(request.url).origin).replace(/\/$/, "");
   return {
-    "www-authenticate": `Bearer realm="mcp", resource_metadata="${baseUrl}/.well-known/oauth-protected-resource", scope="${OAUTH_SCOPE}"`,
+    "www-authenticate": `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource", scope="${OAUTH_SCOPE}"`,
     "access-control-expose-headers": "WWW-Authenticate",
   };
 }

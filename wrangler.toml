@@ -1,6 +1,9 @@
 name = "oneaiworkers"
 main = "src/index.ts"
 compatibility_date = "2026-06-27"
+# Keep manually added dashboard Variables & Secrets when deploying with Wrangler.
+# Without this, Wrangler treats this file as the source of truth and removes dashboard-only variables.
+keep_vars = true
 compatibility_flags = ["nodejs_compat"]
 
 # D1 is used for OAuth, connector registry, connector actions, and audit records.
@@ -13,8 +16,10 @@ HUB_NAME = "OneAIWorkers"
 # PUBLIC_BASE_URL is optional. Set it after deploy if your MCP client needs a stable public URL.
 # PUBLIC_BASE_URL = "https://oneaiworkers.your-subdomain.workers.dev"
 
+# Required secret. Set once with `npx wrangler secret put MCP_SHARED_SECRET` or via Dashboard as Secret.
+# MCP_SHARED_SECRET        - required; protects the OAuth connect page and shared-secret access
+
 # Optional secrets. Set them with `npx wrangler secret put <NAME>`.
-# MCP_SHARED_SECRET        - recommended; protects the OAuth connect page and shared-secret access
 # TELEGRAM_BOT_TOKEN       - Telegram Bot API token
 # TELEGRAM_CHAT_ID         - default Telegram chat id
 # DISCORD_WEBHOOK_URL      - default Discord webhook URL
