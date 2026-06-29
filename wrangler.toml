@@ -10,6 +10,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "OAUTH_DB"
 database_name = "oneaiworkers-oauth"
+database_id = "ebb15e8a-1131-4c27-b5ff-6914340deb2a"
 
 [vars]
 HUB_NAME = "OneAIWorkers"

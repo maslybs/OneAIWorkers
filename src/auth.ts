@@ -26,8 +26,8 @@ export async function isMcpAuthorized(request: Request, env: Env): Promise<boole
 export function unauthorized(request: Request, env: Env): Response {
   const body = env.MCP_SHARED_SECRET || isOAuthEnabled(env)
     ? biInline(
-        "Unauthorized. Use OAuth, Authorization: Bearer <token>, x-oneaiworkers-token, or ?key=...",
-        "Немає доступу. Використайте OAuth, Authorization: Bearer <token>, x-oneaiworkers-token або ?key=...",
+        "Unauthorized. Use OAuth, Authorization: Bearer <token>, or x-oneaiworkers-token.",
+        "Немає доступу. Використайте OAuth, Authorization: Bearer <token> або x-oneaiworkers-token.",
       )
     : biInline("Unauthorized.", "Немає доступу.");
 

@@ -60,6 +60,62 @@ export const testConnectorSchema = {
   dry_run: z.boolean().default(true),
 };
 
+export interface ConnectorMcpTool {
+  tool_name: string;
+  title: string;
+  description: string;
+  connector_id: string;
+  connector_name: string;
+  action_name: string;
+  method: string;
+  input_schema: unknown;
+  read_only: boolean;
+  destructive: boolean;
+  side_effect: boolean;
+}
+
+interface ConnectorActionToolRow extends ActionRow {
+  connector_name: string;
+  connector_description: string | null;
+  connector_mode: ConnectorMode;
+}
+
+export async function listConnectorMcpTools(env: Env): Promise<ConnectorMcpTool[]> {
+  const db = getDb(env);
+  await ensureConnectorSchema(env);
+  const rows = await db.prepare(
+    `SELECT
+       a.*,
+       c.name AS connector_name,
+       c.description AS connector_description,
+       c.mode AS connector_mode
+     FROM connector_actions a
+     JOIN connectors c ON c.connector_id = a.connector_id
+     WHERE c.enabled = 1
+     ORDER BY a.connector_id, a.action_name`,
+  ).all<ConnectorActionToolRow>();
+
+  const usedNames = new Set<string>();
+  return (rows.results || []).map((row) => {
+    const toolName = uniqueToolName(`${toolNamePart(row.connector_id)}_${toolNamePart(row.action_name)}`, usedNames);
+    const readOnly = isReadOnlyConnectorAction(row);
+    const destructive = isDestructiveConnectorAction(row);
+    return {
+      tool_name: toolName,
+      title: `${row.connector_name}: ${humanizeActionName(row.action_name)}`,
+      description: buildConnectorToolDescription(row, readOnly, destructive),
+      connector_id: row.connector_id,
+      connector_name: row.connector_name,
+      action_name: row.action_name,
+      method: row.method,
+      input_schema: row.input_schema_json ? parseJson<unknown>(row.input_schema_json, null) : null,
+      read_only: readOnly,
+      destructive,
+      side_effect: !readOnly,
+    };
+  });
+}
+
 export async function ensureConnectorSchema(env: Env): Promise<void> {
   const db = getDb(env);
   if (!schemaReady) {
@@ -325,10 +381,13 @@ async function listActionsForConnector(env: Env, db: D1Database, connectorId: st
   const rows = await db.prepare("SELECT * FROM connector_actions WHERE connector_id = ? ORDER BY action_name").bind(connectorId).all<ActionRow>();
   return (rows.results || []).map((row) => ({
     name: row.action_name,
+    mcp_tool_name: `${toolNamePart(row.connector_id)}_${toolNamePart(row.action_name)}`,
     description: row.description,
     method: row.method,
     url: redactTemplatedUrl(row.url),
     auth: publicAuth(parseJson<AuthConfig>(row.auth_json, { type: "none" }), env),
+    read_only: isReadOnlyConnectorAction(row),
+    side_effect: !isReadOnlyConnectorAction(row),
     input_schema: row.input_schema_json ? parseJson<unknown>(row.input_schema_json, null) : null,
   }));
 }
@@ -401,6 +460,46 @@ function publicConnector(row: ConnectorRow) {
 
 function normalizeKey(value: string): string {
   return safeKey(value).replaceAll(":", "-");
+}
+
+function toolNamePart(value: string): string {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "tool";
+}
+
+function uniqueToolName(baseName: string, usedNames: Set<string>): string {
+  let name = baseName;
+  let index = 2;
+  while (usedNames.has(name)) name = `${baseName}_${index++}`;
+  usedNames.add(name);
+  return name;
+}
+
+function humanizeActionName(value: string): string {
+  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function buildConnectorToolDescription(row: ConnectorActionToolRow, readOnly: boolean, destructive: boolean): string {
+  const parts = [
+    `${row.connector_name} connector action exposed as a first-class OneAIWorkers MCP tool.`,
+    row.description || `Runs ${humanizeActionName(row.action_name)} for ${row.connector_name}.`,
+    readOnly ? "Read-only: this tool should not create external side effects." : "External side effect: this tool may change data, send messages, trigger workflows, or call an external API.",
+  ];
+  if (destructive) parts.push("Destructive action: use only after explicit user intent is clear.");
+  parts.push("ChatGPT should call this tool directly; routing to internal connectors or child Workers is handled by OneAIWorkers.");
+  return parts.join(" ");
+}
+
+function isReadOnlyConnectorAction(row: ActionRow): boolean {
+  const name = row.action_name.toLowerCase();
+  if (["GET", "HEAD", "OPTIONS"].includes(row.method.toUpperCase())) return true;
+  return /^(get|list|read|fetch|check|status|info|search|lookup|whois|summary|overview|inspect|validate|test)/.test(name);
+}
+
+function isDestructiveConnectorAction(row: ActionRow): boolean {
+  const name = row.action_name.toLowerCase();
+  if (["DELETE"].includes(row.method.toUpperCase())) return true;
+  return /^(delete|remove|destroy|cancel|disable|revoke|drop|purge|wipe)/.test(name);
 }
 
 function getDb(env: Env): D1Database {

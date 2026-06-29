@@ -8,7 +8,7 @@ OneAIWorkers gives your AI assistant safe hands.
 
 Your AI assistant can read, think, remember, plan, and decide. OneAIWorkers gives it a safe way to do real actions: check a website, read an RSS feed, send a Telegram message, call a webhook, connect to an API, or create a separate Worker for a special task.
 
-You connect one MCP URL to ChatGPT or another MCP client. Behind that one URL, OneAIWorkers can expose many tools and connectors.
+You connect one MCP URL to ChatGPT or another MCP client. Behind that one URL, OneAIWorkers exposes saved connector actions as first-class top-level tools, such as `tg_getme`, `tg_send_message`, or `n8n_list_workflows`. Child Workers stay behind the main gateway by default.
 
 ```text
 AI assistant → OneAIWorkers MCP → your tools, APIs, webhooks, and child Workers
@@ -181,7 +181,7 @@ PUBLIC_BASE_URL
 
 This is recommended.
 
-`MCP_SHARED_SECRET` is a private password. OneAIWorkers asks for it during OAuth connection. It can also be used for manual access with `?key=`.
+`MCP_SHARED_SECRET` is a private password. OneAIWorkers asks for it during OAuth connection. For manual API testing, use an `Authorization: Bearer` header instead of putting secrets in the URL.
 
 Use a long random value.
 

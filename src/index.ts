@@ -137,7 +137,7 @@ export default {
 
       if (url.pathname === "/mcp") {
         if (!(await isMcpAuthorized(request, env))) return unauthorized(request, env);
-        const server = createMcpServer(env, request);
+        const server = await createMcpServer(env, request);
         return createMcpHandler(server)(request, env, ctx);
       }
 
