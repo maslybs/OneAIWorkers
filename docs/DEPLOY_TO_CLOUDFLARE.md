@@ -54,11 +54,13 @@ For personal use, add `MCP_SHARED_SECRET` in Cloudflare. During OAuth connection
 4. Add a secret named `MCP_SHARED_SECRET`.
 5. Redeploy if Cloudflare asks.
 
-Then connect to:
+Then connect through OAuth at:
 
 ```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
+
+For manual clients that support bearer authentication, send the shared secret in the `Authorization: Bearer` header. Never put it in the URL.
 
 ## Optional notifications
 

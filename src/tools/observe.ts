@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { biInline } from "../i18n";
-import { assertSafeOutboundUrl, redactUrlForOutput } from "../security";
+import { assertSafeOutboundUrl, fetchWithSafeRedirects, redactUrlForOutput } from "../security";
 import type { UrlFetchResult } from "../types";
 
 const USER_AGENT = "OneAIWorkers/0.2 (+https://workers.cloudflare.com)";
@@ -31,12 +31,11 @@ export const fetchRssSchema = {
 
 export async function fetchUrl(args: z.infer<z.ZodObject<typeof fetchUrlSchema>>): Promise<UrlFetchResult> {
   const url = assertSafeOutboundUrl(args.url);
-  const response = await fetch(url, {
+  const response = await fetchWithSafeRedirects(url, {
     headers: {
       "user-agent": USER_AGENT,
       accept: "text/html,application/xhtml+xml,application/xml,text/plain,application/json;q=0.9,*/*;q=0.8",
     },
-    redirect: "follow",
   });
 
   const contentType = response.headers.get("content-type");
@@ -76,7 +75,7 @@ export async function checkUrlStatus(args: z.infer<z.ZodObject<typeof checkUrlSt
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(biInline("Request timed out.", "Час очікування запиту вичерпано.")), args.timeout_ms);
   try {
-    const response = await fetch(url, { method: "GET", redirect: "follow", signal: controller.signal });
+    const response = await fetchWithSafeRedirects(url, { method: "GET", signal: controller.signal });
     const expected = args.expected_status;
     return {
       url: redactUrlForOutput(url),

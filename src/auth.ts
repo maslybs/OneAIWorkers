@@ -1,5 +1,6 @@
 import { biInline } from "./i18n";
 import { isOAuthEnabled, isValidOAuthAccessToken, oauthUnauthorizedHeaders } from "./oauth";
+import { constantTimeEqual } from "./security";
 import type { Env } from "./types";
 
 export function getRequestToken(request: Request): string | null {
@@ -9,15 +10,17 @@ export function getRequestToken(request: Request): string | null {
   const headerToken = request.headers.get("x-oneaiworkers-token");
   if (headerToken) return headerToken.trim();
 
-  const url = new URL(request.url);
-  return url.searchParams.get("key") ?? url.searchParams.get("access_token");
+  return null;
 }
 
 export async function isMcpAuthorized(request: Request, env: Env): Promise<boolean> {
   const token = getRequestToken(request);
 
-  if (token && env.MCP_SHARED_SECRET && token === env.MCP_SHARED_SECRET) return true;
-  if (token && isOAuthEnabled(env) && await isValidOAuthAccessToken(token, env)) return true;
+  if (token && env.MCP_SHARED_SECRET && await constantTimeEqual(token, env.MCP_SHARED_SECRET)) return true;
+  if (token && isOAuthEnabled(env)) {
+    const resource = `${buildBaseUrl(request, env)}/mcp`;
+    if (await isValidOAuthAccessToken(token, env, resource)) return true;
+  }
 
   if (!env.MCP_SHARED_SECRET && !isOAuthEnabled(env)) return true;
   return false;

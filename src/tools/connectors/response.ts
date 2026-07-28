@@ -1,14 +1,17 @@
 import type { JsonObject } from "./types";
 import { truncate } from "./templates";
+import { redactSensitiveText, redactSensitiveValue } from "../../security";
 
 const MAX_RESPONSE_PREVIEW_TEXT = 4_000;
 const MAX_JSON_DEPTH = 6;
 const MAX_JSON_ARRAY_ITEMS = 12;
 const MAX_JSON_OBJECT_KEYS = 30;
 
-export function buildConnectorResponse(response: Response, text: string) {
+export function buildConnectorResponse(response: Response, text: string, protectedValues: string[] = []) {
   const contentType = response.headers.get("content-type");
   const parsedJson = parseJsonMaybe(text);
+  const safeJson = parsedJson.ok ? redactSensitiveValue(parsedJson.value, 0, protectedValues) : null;
+  const safeText = parsedJson.ok ? JSON.stringify(safeJson) : redactSensitiveText(text, protectedValues);
   const bodyKind = parsedJson.ok ? "json" : "text";
   return {
     status: response.status,
@@ -16,11 +19,11 @@ export function buildConnectorResponse(response: Response, text: string) {
     ok: response.ok,
     content_type: contentType,
     body_kind: bodyKind,
-    summary: parsedJson.ok ? summarizeJson(parsedJson.value) : null,
-    json_preview: parsedJson.ok ? compactJson(parsedJson.value) : null,
-    text_preview: parsedJson.ok ? null : truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
-    raw_text_preview: truncate(text, MAX_RESPONSE_PREVIEW_TEXT),
-    truncated: text.length > MAX_RESPONSE_PREVIEW_TEXT,
+    summary: parsedJson.ok ? summarizeJson(safeJson) : null,
+    json_preview: parsedJson.ok ? compactJson(safeJson) : null,
+    text_preview: parsedJson.ok ? null : truncate(safeText, MAX_RESPONSE_PREVIEW_TEXT),
+    raw_text_preview: truncate(safeText, MAX_RESPONSE_PREVIEW_TEXT),
+    truncated: safeText.length > MAX_RESPONSE_PREVIEW_TEXT,
   };
 }
 

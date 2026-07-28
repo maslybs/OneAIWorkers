@@ -4,6 +4,7 @@ import { bi, bilingualObject, biInline } from "./i18n";
 import type { Env } from "./types";
 import { buildBaseUrl } from "./auth";
 import { errorMessage, mcpText } from "./response";
+import { redactSensitiveText, redactSensitiveValue } from "./security";
 import { checkUrlStatus, checkUrlStatusSchema, fetchManyUrls, fetchManyUrlsSchema, fetchRss, fetchRssSchema, fetchUrl, fetchUrlSchema } from "./tools/observe";
 import { callWebhook, callWebhookSchema, sendNotification, sendNotificationSchema } from "./tools/notify";
 import { createChildWorkerFromTemplate, createChildWorkerSchema, deployCustomChildWorker, deployCustomChildWorkerSchema } from "./tools/factory";
@@ -163,12 +164,23 @@ function registerConnectorTools(server: McpServer, env: Env, connectorTools: Con
       connectorTool.title,
       connectorTool.description,
       inputSchema,
-      (args) => callConnectorTool(env, {
-        connector_id: connectorTool.connector_id,
-        action_name: connectorTool.action_name,
-        input: connectorInput(args),
-        dry_run: Boolean(args.dry_run),
-      }),
+      (args) => {
+        const dryRun = Boolean(args.dry_run);
+        const confirmed = Boolean(args.confirmed);
+        if (!dryRun && connectorTool.side_effect && !confirmed) {
+          throw new Error(biInline(
+            "This connector tool can create an external side effect. Retry with confirmed=true after the user clearly approves the action.",
+            "Цей connector tool може створити зовнішній side effect. Повторіть з confirmed=true після явного підтвердження користувача.",
+          ));
+        }
+        return callConnectorTool(env, {
+          connector_id: connectorTool.connector_id,
+          action_name: connectorTool.action_name,
+          input: connectorInput(args),
+          dry_run: dryRun,
+          confirmed,
+        });
+      },
       annotations,
     );
   }
@@ -176,10 +188,10 @@ function registerConnectorTools(server: McpServer, env: Env, connectorTools: Con
 
 async function safeRun(fn: () => Promise<unknown> | unknown) {
   try {
-    const data = await fn();
+    const data = redactSensitiveValue(await fn());
     return mcpText({ ok: true, data });
   } catch (error) {
-    return mcpText({ ok: false, message: `${biInline("Error", "Помилка")}: ${errorMessage(error)}` });
+    return mcpText({ ok: false, message: redactSensitiveText(`${biInline("Error", "Помилка")}: ${errorMessage(error)}`) });
   }
 }
 
@@ -188,7 +200,7 @@ async function loadConnectorTools(env: Env): Promise<{ connectorTools: Connector
     if (!env.OAUTH_DB) return { connectorTools: [], connectorToolError: "D1 database is not configured." };
     return { connectorTools: await listConnectorMcpTools(env), connectorToolError: null };
   } catch (error) {
-    return { connectorTools: [], connectorToolError: errorMessage(error) };
+    return { connectorTools: [], connectorToolError: redactSensitiveText(errorMessage(error)) };
   }
 }
 
@@ -207,10 +219,12 @@ function inputSchemaFromJsonSchema(schema: unknown): z.ZodRawShape {
   const properties = record.properties;
   if (!properties || typeof properties !== "object" || Array.isArray(properties)) return {};
   const required = new Set(Array.isArray(record.required) ? record.required.filter((item): item is string => typeof item === "string") : []);
-  const shape: z.ZodRawShape = {};
+  const shape: Record<string, z.ZodTypeAny> = {};
   for (const [key, value] of Object.entries(properties as Record<string, unknown>)) {
     let field = zodFromJsonSchemaProperty(value);
-    if (!required.has(key)) field = field.optional();
+    const property = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    if ("default" in property) field = field.default(property.default as never);
+    else if (!required.has(key)) field = field.optional();
     shape[key] = field;
   }
   return shape;

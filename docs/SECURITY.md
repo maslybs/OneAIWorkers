@@ -21,11 +21,12 @@ The Worker accepts it in one of these ways:
 
 - `Authorization: Bearer <secret>`;
 - `x-oneaiworkers-token: <secret>`;
-- `?key=<secret>` or `?access_token=<secret>`.
 
-The `?key=` option is easy to use, but less safe because URLs can appear in logs or browser history.
+Secrets and OAuth access tokens are deliberately rejected in URL query parameters because URLs can appear in logs and browser history.
 
 For public apps, use OAuth or Cloudflare Access.
+
+OAuth requires PKCE with `S256`. Access tokens expire after one hour. Clients can request the `offline_access` scope to receive a rotating refresh token. OAuth tokens can be revoked through `/oauth/revoke`.
 
 ## Cloudflare API token
 

@@ -5,6 +5,7 @@ import { homeHtml } from "./html";
 import {
   handleOAuthAuthorize,
   handleOAuthRegister,
+  handleOAuthRevoke,
   handleOAuthToken,
   isOAuthEnabled,
   oauthMetadata,
@@ -54,6 +55,10 @@ export default {
 
       if (url.pathname === "/oauth/token" && request.method === "POST") {
         return handleOAuthToken(request, env);
+      }
+
+      if (url.pathname === "/oauth/revoke" && request.method === "POST") {
+        return handleOAuthRevoke(request, env);
       }
 
       if (url.pathname === "/.well-known/oneaiworkers" && request.method === "GET") {

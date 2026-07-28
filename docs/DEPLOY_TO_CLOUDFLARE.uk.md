@@ -54,11 +54,13 @@ Worker може працювати без секретів. Для першог�
 4. Додайте секрет з назвою `MCP_SHARED_SECRET`.
 5. Зробіть повторне розгортання, якщо Cloudflare попросить.
 
-Після цього підключайтесь до:
+Після цього підключайтесь через OAuth за адресою:
 
 ```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
+
+Для ручних клієнтів, які підтримують токен у заголовку, передавайте спільний секрет через `Authorization: Bearer`. Ніколи не додавайте його до адреси.
 
 ## Додаткові повідомлення
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { biInline } from "../i18n";
-import { assertSafeOutboundUrl, redactUrlForOutput } from "../security";
+import { assertSafeOutboundUrl, redactSensitiveText, redactSensitiveValue, redactUrlForOutput } from "../security";
 import type { Env } from "../types";
 
 export const sendNotificationSchema = {
@@ -45,7 +45,7 @@ export async function callWebhook(args: z.infer<z.ZodObject<typeof callWebhookSc
     headers,
     body: JSON.stringify(args.body ?? {}),
   });
-  const responseText = await response.text();
+  const responseText = redactSensitiveText(await response.text(), [url.toString()]);
   return {
     ok: response.ok,
     url: redactUrlForOutput(url),
@@ -66,7 +66,7 @@ async function sendTelegram(env: Env, message: string, chatId?: string) {
     body: JSON.stringify({ chat_id: targetChatId, text: message.slice(0, 3900) }),
   });
   const payload = await response.json().catch(() => null);
-  return { ok: response.ok, status: response.status, response: payload };
+  return { ok: response.ok, status: response.status, response: redactSensitiveValue(payload, 0, [env.TELEGRAM_BOT_TOKEN]) };
 }
 
 async function postJson(url: string | undefined, body: unknown) {
@@ -77,6 +77,6 @@ async function postJson(url: string | undefined, body: unknown) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const responseText = await response.text();
+  const responseText = redactSensitiveText(await response.text(), [target.toString()]);
   return { ok: response.ok, url: redactUrlForOutput(target), status: response.status, text: responseText.slice(0, 2000) };
 }

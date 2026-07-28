@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --keep-vars",
+    "test": "npm run test:security && npm run test:oauth",
+    "test:security": "node --test scripts/security.test.mjs",
+    "test:oauth": "node --test scripts/oauth-integration.test.mjs",
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types",
     "inspect": "npx @modelcontextprotocol/inspector@latest"

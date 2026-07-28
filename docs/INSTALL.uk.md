@@ -50,13 +50,13 @@ npx wrangler login
 npx wrangler secret put MCP_SHARED_SECRET
 ```
 
-Потім підключайтесь до:
+Потім підключайтесь через OAuth за адресою:
 
 ```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
 
-Для публічного застосунку краще використовувати OAuth або Cloudflare Access.
+Для ручного клієнта, який підтримує токен у заголовку, передавайте спільний секрет через `Authorization: Bearer`. Ніколи не додавайте його до адреси.
 
 ### 5. Додати секрети для повідомлень
 
@@ -147,7 +147,7 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 5. Вкажіть `/mcp` посилання вашого Worker.
 6. Оновіть опис інструментів після розгортання.
 
-Якщо ви додали `MCP_SHARED_SECRET`, додайте `?key=YOUR_SECRET` до посилання, якщо ваш клієнт не підтримує Bearer tokens.
+Якщо ви додали `MCP_SHARED_SECRET`, використовуйте OAuth або передавайте секрет через заголовок `Authorization: Bearer`. Секрети в адресі не приймаються.
 
 ## Перший запит
 

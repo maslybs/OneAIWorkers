@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { biInline } from "../i18n";
-import { assertSafeOutboundUrl, redactUrlForOutput, safeKey } from "../security";
+import { assertSafeOutboundUrl, redactSensitiveText, redactSensitiveValue, redactUrlForOutput, safeKey } from "../security";
 import type { Env } from "../types";
 import { applyConnectorAuth, authSchema, getAuthSecretNames, getSecret, isSecretConfigured, publicAuth, redactHeaders, validateAuth, validateSafeHeaders, validateSecretName } from "./connectors/auth";
 import { buildConnectorResponse } from "./connectors/response";
@@ -51,6 +51,7 @@ export const callConnectorToolSchema = {
   action_name: z.string().min(1).max(80),
   input: z.record(z.string(), z.unknown()).default({}),
   dry_run: z.boolean().default(false).describe(biInline("If true, show the prepared request without calling the API.", "Якщо true, показати підготовлений запит без виклику API.")),
+  confirmed: z.boolean().default(false).describe(biInline("Required for actions that can create external side effects.", "Потрібно для actions, які можуть створити зовнішні side effects.")),
 };
 
 export const testConnectorSchema = {
@@ -58,6 +59,7 @@ export const testConnectorSchema = {
   action_name: z.string().min(1).max(80).optional(),
   input: z.record(z.string(), z.unknown()).default({}),
   dry_run: z.boolean().default(true),
+  confirmed: z.boolean().default(false).describe(biInline("Required when dry_run=false for an action that can create an external side effect.", "Потрібно, коли dry_run=false для action, яка може створити зовнішній side effect.")),
 };
 
 export interface ConnectorMcpTool {
@@ -267,7 +269,13 @@ export async function testConnector(env: Env, args: z.infer<z.ZodObject<typeof t
   const actions = await listActionsForConnector(env, db, connectorId);
   if (!actions.length) throw new Error(biInline("Connector not found or has no actions.", "Конектор не знайдено або він не має дій."));
   if (!actionName) return { ok: true, connector_id: connectorId, actions };
-  return callConnectorTool(env, { connector_id: connectorId, action_name: actionName, input: args.input || {}, dry_run: args.dry_run ?? true });
+  return callConnectorTool(env, {
+    connector_id: connectorId,
+    action_name: actionName,
+    input: args.input || {},
+    dry_run: args.dry_run ?? true,
+    confirmed: args.confirmed ?? false,
+  });
 }
 
 export async function callConnectorTool(env: Env, args: z.infer<z.ZodObject<typeof callConnectorToolSchema>>) {
@@ -278,14 +286,37 @@ export async function callConnectorTool(env: Env, args: z.infer<z.ZodObject<type
   const connector = await db.prepare("SELECT * FROM connectors WHERE connector_id = ? AND enabled = 1").bind(connectorId).first<ConnectorRow>();
   if (!connector) throw new Error(biInline("Connector not found.", "Конектор не знайдено."));
 
-  if (connector.mode === "child_worker") return callChildWorkerConnector(env, connector, actionName, args.input || {}, args.dry_run || false);
-
-  const action = await db.prepare("SELECT * FROM connector_actions WHERE connector_id = ? AND action_name = ?").bind(connectorId, actionName).first<ActionRow>();
+  const action = await findConnectorAction(db, connectorId, actionName);
   if (!action) throw new Error(biInline("Connector action not found.", "Дію конектора не знайдено."));
 
-  const result = await callInternalAction(env, action, args.input || {}, args.dry_run || false);
+  const dryRun = args.dry_run || false;
+  if (!dryRun && !isReadOnlyConnectorAction(action) && !args.confirmed) {
+    throw new Error(biInline(
+      "This connector action can create an external side effect. Retry with confirmed=true after the user clearly approves the action.",
+      "Ця дія connector може створити зовнішній side effect. Повторіть з confirmed=true після явного підтвердження користувача.",
+    ));
+  }
+
+  if (connector.mode === "child_worker") return callChildWorkerConnector(env, connector, action.action_name, args.input || {}, dryRun);
+
+  const result = await callInternalAction(env, action, args.input || {}, dryRun);
   await audit(db, connectorId, actionName, args.dry_run ? "dry_run_action" : "call_action", true, `${action.method} ${action.url}`);
   return result;
+}
+
+async function findConnectorAction(db: D1Database, connectorId: string, actionName: string): Promise<ActionRow | null> {
+  const direct = await db.prepare("SELECT * FROM connector_actions WHERE connector_id = ? AND action_name = ?").bind(connectorId, actionName).first<ActionRow>();
+  if (direct) return direct;
+
+  const generatedToolPrefix = `${toolNamePart(connectorId)}_`;
+  if (actionName.startsWith(generatedToolPrefix)) {
+    const rawActionName = actionName.slice(generatedToolPrefix.length);
+    if (rawActionName) {
+      return await db.prepare("SELECT * FROM connector_actions WHERE connector_id = ? AND action_name = ?").bind(connectorId, rawActionName).first<ActionRow>();
+    }
+  }
+
+  return null;
 }
 
 async function saveConnectorAction(db: D1Database, connectorId: string, action: z.infer<typeof actionSchema>, now: number): Promise<void> {
@@ -325,7 +356,10 @@ async function callInternalAction(env: Env, action: ActionRow, input: JsonObject
   for (const [key, value] of Object.entries(customHeaders)) headers.set(key, renderScalar(value, input));
 
   const query = parseJsonObject(action.query_json);
-  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, renderScalar(value, input));
+  for (const [key, value] of Object.entries(query)) {
+    const renderedValue = renderScalar(value, input);
+    if (renderedValue !== "") url.searchParams.set(key, renderedValue);
+  }
 
   await applyConnectorAuth(env, url, headers, parseJson<AuthConfig>(action.auth_json, { type: "none" }));
 
@@ -334,14 +368,14 @@ async function callInternalAction(env: Env, action: ActionRow, input: JsonObject
     method,
     url: redactUrlForOutput(url),
     headers: redactHeaders(headers),
-    body_preview: body ? truncate(body, 2_000) : null,
+    body_preview: body ? truncate(redactSensitiveText(body), 2_000) : null,
   };
 
   if (dryRun) return { ok: true, dry_run: true, prepared_request: prepared };
 
   const response = await fetch(url.toString(), { method, headers, body, redirect: "manual" });
   const text = await response.text();
-  return { ok: response.ok, request: prepared, response: buildConnectorResponse(response, text) };
+  return { ok: response.ok, request: prepared, response: buildConnectorResponse(response, text, protectedRequestValues(headers, url)) };
 }
 
 function buildRequestBody(action: ActionRow, input: JsonObject, method: string, headers: Headers): string | undefined {
@@ -362,19 +396,28 @@ async function callChildWorkerConnector(env: Env, connector: ConnectorRow, actio
   if (connector.child_worker_binding) {
     const binding = getServiceBinding(env, connector.child_worker_binding);
     const target = `service-binding://${connector.child_worker_binding}/tools/call`;
-    if (dryRun) return { ok: true, dry_run: true, invocation: "service_binding", child_worker_binding: connector.child_worker_binding, target, payload };
+    if (dryRun) return { ok: true, dry_run: true, invocation: "service_binding", child_worker_binding: connector.child_worker_binding, target, payload: redactSensitiveValue(payload) };
     const response = await binding.fetch(new Request("https://oneaiworkers-child.local/tools/call", { method: "POST", headers, body }));
     const text = await response.text();
-    return { ok: response.ok, invocation: "service_binding", child_worker_binding: connector.child_worker_binding, response: buildConnectorResponse(response, text) };
+    return { ok: response.ok, invocation: "service_binding", child_worker_binding: connector.child_worker_binding, response: buildConnectorResponse(response, text, protectedRequestValues(headers)) };
   }
 
   if (!connector.child_worker_url) throw new Error(biInline("Child Worker URL or Service Binding is not configured.", "URL або Service Binding child Worker не налаштований."));
   const endpoint = new URL("/tools/call", assertSafeOutboundUrl(connector.child_worker_url));
-  if (dryRun) return { ok: true, dry_run: true, invocation: "protected_url", child_worker_url: redactUrlForOutput(endpoint), payload };
+  if (dryRun) return { ok: true, dry_run: true, invocation: "protected_url", child_worker_url: redactUrlForOutput(endpoint), payload: redactSensitiveValue(payload) };
 
   const response = await fetch(endpoint.toString(), { method: "POST", headers, body, redirect: "manual" });
   const text = await response.text();
-  return { ok: response.ok, invocation: "protected_url", child_worker_url: redactUrlForOutput(endpoint), response: buildConnectorResponse(response, text) };
+  return { ok: response.ok, invocation: "protected_url", child_worker_url: redactUrlForOutput(endpoint), response: buildConnectorResponse(response, text, protectedRequestValues(headers, endpoint)) };
+}
+
+function protectedRequestValues(headers: Headers, url?: URL): string[] {
+  const values: string[] = [];
+  for (const [key, value] of headers.entries()) {
+    if (!["accept", "content-type", "user-agent"].includes(key.toLowerCase())) values.push(value);
+  }
+  if (url) for (const value of url.searchParams.values()) values.push(value);
+  return values.filter((value) => value.length >= 6);
 }
 
 async function listActionsForConnector(env: Env, db: D1Database, connectorId: string) {

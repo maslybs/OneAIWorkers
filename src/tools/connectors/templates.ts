@@ -1,5 +1,5 @@
 import { biInline } from "../../i18n";
-import { assertSafeOutboundUrl } from "../../security";
+import { assertSafeOutboundUrl, redactSensitiveText } from "../../security";
 import type { JsonObject } from "./types";
 
 const MAX_TEMPLATE_DEPTH = 20;
@@ -12,6 +12,13 @@ export function renderUrlString(template: string, input: JsonObject): string {
 }
 
 export function validateTemplatedUrl(template: string): void {
+  const authority = template.match(/^https:\/\/([^/?#]*)/i)?.[1] ?? "";
+  if (authority.includes("{{") || authority.includes("}}")) {
+    throw new Error(biInline(
+      "URL templates are allowed only in the path, query, or fragment. The API host must be fixed.",
+      "Шаблони URL дозволені тільки в шляху, параметрах або фрагменті. Адреса API має бути сталою.",
+    ));
+  }
   assertSafeOutboundUrl(templateUrlForValidation(template));
 }
 
@@ -26,7 +33,13 @@ export function assertUrlTemplateInput(template: string, input: JsonObject): voi
 }
 
 export function redactTemplatedUrl(template: string): string {
-  return template.replace(SENSITIVE_QUERY_RE, "$1[redacted]");
+  return redactSensitiveText(
+    template
+      .replace(SENSITIVE_QUERY_RE, "$1[redacted]")
+      .replace(/(\/(?:webhook(?:-test)?|hooks?)\/)[^?#\s]+/gi, "$1[redacted]")
+      .replace(/(\/api\/webhooks\/)[^?#\s]+/gi, "$1[redacted]")
+      .replace(/(\/services\/)[^?#\s]+/gi, "$1[redacted]"),
+  );
 }
 
 export function renderTemplate(value: unknown, input: JsonObject, depth = 0): unknown {

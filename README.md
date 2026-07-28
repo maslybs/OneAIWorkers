@@ -207,7 +207,7 @@ Authentication: OAuth
 Server URL: https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
 
-Do not add `?key=` when you use OAuth.
+URL query secrets such as `?key=` are not accepted.
 
 When ChatGPT opens the connection page, enter your `MCP_SHARED_SECRET` if you set one.
 
@@ -439,7 +439,7 @@ The AI sees secret names, not secret values.
 Only HTTPS URLs are allowed.
 Local/private network URLs are blocked.
 Connector actions are stored in D1.
-OAuth tokens are stored in D1.
+OAuth session records and token hashes are stored in D1.
 Child Workers are optional.
 Custom child Worker code should be reviewed before deploy.
 ```

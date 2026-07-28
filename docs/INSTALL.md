@@ -50,13 +50,13 @@ This step is optional, but recommended.
 npx wrangler secret put MCP_SHARED_SECRET
 ```
 
-Then connect to:
+Then connect through OAuth at:
 
 ```text
-https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp?key=YOUR_SECRET
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
 
-For a public app, use OAuth or Cloudflare Access instead.
+For a manual client that supports bearer authentication, send the shared secret in the `Authorization: Bearer` header. Never put it in the URL.
 
 ### 5. Add notification secrets
 
@@ -147,7 +147,7 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 5. Use your Worker `/mcp` URL.
 6. Refresh tool metadata after deployments.
 
-If you added `MCP_SHARED_SECRET`, add `?key=YOUR_SECRET` to the URL unless your client supports Bearer tokens.
+If you added `MCP_SHARED_SECRET`, use OAuth or send the secret in the `Authorization: Bearer` header. URL query secrets are not accepted.
 
 ## First prompt
 
