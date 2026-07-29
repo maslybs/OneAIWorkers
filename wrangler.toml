@@ -14,6 +14,11 @@ database_id = "ebb15e8a-1131-4c27-b5ff-6914340deb2a"
 
 [vars]
 HUB_NAME = "OneAIWorkers"
+# Update checks use the official manifest by default. These values are optional overrides.
+# UPDATE_CHECK_ENABLED = "true"
+# UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/maslybs/OneAIWorkers/main/update-manifest.json"
+# UPDATE_SERVICE_URL is needed only while testing a private update authorization service.
+# UPDATE_SERVICE_URL = "https://updates.example.com/start"
 # PUBLIC_BASE_URL is optional. Set it after deploy if your MCP client needs a stable public URL.
 # PUBLIC_BASE_URL = "https://oneaiworkers.your-subdomain.workers.dev"
 

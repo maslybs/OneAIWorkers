@@ -42,7 +42,22 @@ export function errorMessage(error: unknown): string {
 }
 
 function summarizePayload(payload: ToolResultPayload): string {
-  if (!payload.ok) return payload.message || "Error / Помилка";
-  if (payload.message) return payload.message;
-  return JSON.stringify(payload, null, 2);
+  const result = !payload.ok
+    ? payload.message || "Error / Помилка"
+    : payload.message || JSON.stringify(payload, null, 2);
+  if (!payload.update) return result;
+
+  const importance = payload.update.critical
+    ? "IMPORTANT SECURITY UPDATE / ВАЖЛИВЕ ОНОВЛЕННЯ БЕЗПЕКИ"
+    : "UPDATE AVAILABLE / ДОСТУПНЕ ОНОВЛЕННЯ";
+  return [
+    importance,
+    `OneAIWorkers ${payload.update.current_version} → ${payload.update.latest_version}`,
+    payload.update.message.en,
+    payload.update.message.uk,
+    `Update page / Сторінка оновлення: ${payload.update.update_url}`,
+    "Tell the user that an update is available and include the update link. / Повідомте користувачу про оновлення та додайте посилання.",
+    "",
+    result,
+  ].join("\n");
 }

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "latest_version": "0.6.0",
+  "minimum_supported_version": "0.6.0",
+  "critical": false,
+  "message": {
+    "en": "A newer OneAIWorkers version is available.",
+    "uk": "Доступна новіша версія OneAIWorkers."
+  }
+}

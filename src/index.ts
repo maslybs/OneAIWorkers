@@ -14,6 +14,8 @@ import {
 import { createMcpServer } from "./server";
 import type { Env } from "./types";
 import { errorMessage, json, text } from "./response";
+import { APP_VERSION, getUpdateState, updateServiceStartUrl } from "./update";
+import { updatePageHtml } from "./update-page";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -26,7 +28,27 @@ export default {
       }
 
       if (url.pathname === "/health" && request.method === "GET") {
-        return json({ ok: true, name: env.HUB_NAME || "OneAIWorkers", now: new Date().toISOString() });
+        return json({ ok: true, name: env.HUB_NAME || "OneAIWorkers", version: APP_VERSION, now: new Date().toISOString() });
+      }
+
+      if (url.pathname === "/update" && request.method === "GET") {
+        const updateState = await getUpdateState(env, baseUrl);
+        return new Response(updatePageHtml(updateState, baseUrl), {
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+            "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+            "referrer-policy": "no-referrer",
+            "x-content-type-options": "nosniff",
+          },
+        });
+      }
+
+      if (url.pathname === "/update/start" && request.method === "GET") {
+        const updateState = await getUpdateState(env, baseUrl);
+        const startUrl = updateServiceStartUrl(updateState, baseUrl);
+        if (!startUrl) return Response.redirect(`${baseUrl}/update`, 303);
+        return Response.redirect(startUrl, 303);
       }
 
       if (
@@ -64,11 +86,13 @@ export default {
       if (url.pathname === "/.well-known/oneaiworkers" && request.method === "GET") {
         return json({
           name: env.HUB_NAME || "OneAIWorkers",
+          version: APP_VERSION,
           description: bilingualObject(
             "Secure remote MCP gateway for connecting ChatGPT to user-owned HTTP APIs through saved connector manifests on Cloudflare Workers.",
             "Безпечний remote MCP gateway для підключення ChatGPT до HTTP API користувача через збережені connector manifests на Cloudflare Workers.",
           ),
           mcp_endpoint: `${baseUrl}/mcp`,
+          update_page: `${baseUrl}/update`,
           recommended_first_tools: ["connector_setup_status", "list_connectors", "test_connector", "call_connector_tool"],
           connector_engine: {
             storage: "D1",

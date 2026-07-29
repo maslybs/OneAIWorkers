@@ -10,6 +10,8 @@ Your AI assistant can read, think, remember, plan, and decide. OneAIWorkers give
 
 You connect one MCP URL to ChatGPT or another MCP client. Behind that one URL, OneAIWorkers exposes saved connector actions as first-class top-level tools, such as `tg_getme`, `tg_send_message`, or `n8n_list_workflows`. Child Workers stay behind the main gateway by default.
 
+When a newer version is available, OneAIWorkers appends an update notice to MCP results with a link to the installed Worker's own `/update` page. See [OneAIWorkers updates](docs/UPDATES.md).
+
 ```text
 AI assistant → OneAIWorkers MCP → your tools, APIs, webhooks, and child Workers
 ```

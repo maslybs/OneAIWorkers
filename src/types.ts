@@ -4,6 +4,9 @@ export interface Env {
   HUB_NAME?: string;
   PUBLIC_BASE_URL?: string;
   MCP_SHARED_SECRET?: string;
+  UPDATE_CHECK_ENABLED?: string;
+  UPDATE_MANIFEST_URL?: string;
+  UPDATE_SERVICE_URL?: string;
 
   // D1 database used for OAuth, connector registry, and audit records.
   OAUTH_DB?: D1Database;
@@ -24,6 +27,20 @@ export interface ToolResultPayload {
   ok: boolean;
   message?: string;
   data?: unknown;
+  update?: UpdateNotice;
+}
+
+export interface UpdateNotice {
+  available: true;
+  current_version: string;
+  latest_version: string;
+  critical: boolean;
+  update_url: string;
+  release_notes_url?: string;
+  message: {
+    en: string;
+    uk: string;
+  };
 }
 
 export interface UrlFetchResult {

@@ -1,4 +1,5 @@
 import type { Env } from "./types";
+import { APP_VERSION } from "./update";
 
 export function homeHtml(env: Env, baseUrl: string): string {
   const title = env.HUB_NAME || "OneAIWorkers";
@@ -26,6 +27,7 @@ export function homeHtml(env: Env, baseUrl: string): string {
 <body>
   <h1>${escapeHtml(title)}</h1>
   <p class="muted">Secure remote MCP gateway for connecting ChatGPT to user-owned HTTP APIs through saved connector manifests.</p>
+  <p class="muted">Version ${escapeHtml(APP_VERSION)}</p>
 
   <div class="grid">
     <section class="card">
@@ -64,6 +66,12 @@ export function homeHtml(env: Env, baseUrl: string): string {
 list_connectors { "include_actions": true }
 test_connector { "connector_id": "n8n", "action_name": "list_workflows" }</pre>
     <p class="muted">Run setup status first. It shows D1 readiness, saved connectors, required secrets, and missing secrets without exposing values.</p>
+  </section>
+
+  <section class="card">
+    <h2>Оновлення / Updates</h2>
+    <p>Перевірити встановлену версію та наявність оновлень можна на сторінці вашого Worker.</p>
+    <p><a href="${escapeHtml(baseUrl)}/update">Відкрити сторінку оновлення</a></p>
   </section>
 
   <section class="card">

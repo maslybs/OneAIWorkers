@@ -9,6 +9,7 @@ import { checkUrlStatus, checkUrlStatusSchema, fetchManyUrls, fetchManyUrlsSchem
 import { callWebhook, callWebhookSchema, sendNotification, sendNotificationSchema } from "./tools/notify";
 import { createChildWorkerFromTemplate, createChildWorkerSchema, deployCustomChildWorker, deployCustomChildWorkerSchema } from "./tools/factory";
 import { callConnectorTool, callConnectorToolSchema, connectorSetupStatus, connectorSetupStatusSchema, deleteConnector, connectorIdSchema, listConnectorMcpTools, listConnectors, listConnectorsSchema, saveConnector, saveConnectorSchema, testConnector, testConnectorSchema, type ConnectorMcpTool } from "./tools/integrations";
+import { APP_VERSION, getUpdateState, updateNotice } from "./update";
 
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: ["mcp"] }] as const;
 
@@ -16,6 +17,7 @@ const READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: f
 const READ_EXTERNAL = { readOnlyHint: true, destructiveHint: false, openWorldHint: true };
 const WRITE_EXTERNAL = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
 const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
+const serverUpdateNotices = new WeakMap<McpServer, () => Promise<ReturnType<typeof updateNotice>>>();
 
 const STATIC_TOOL_NAMES = [
   "hub_info",
@@ -36,10 +38,13 @@ const STATIC_TOOL_NAMES = [
 ];
 
 export async function createMcpServer(env: Env, request: Request): Promise<McpServer> {
+  const baseUrl = buildBaseUrl(request, env);
   const server = new McpServer({
     name: env.HUB_NAME || "OneAIWorkers",
-    version: "0.5.0",
+    version: APP_VERSION,
   });
+  const getNotice = async () => updateNotice(await getUpdateState(env, baseUrl));
+  serverUpdateNotices.set(server, getNotice);
 
   const { connectorTools, connectorToolError } = await loadConnectorTools(env);
 
@@ -52,11 +57,13 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
       "Пояснює цей MCP server, модель роботи, доступні native connector tools і які опційні інтеграції налаштовані. Використовуйте першим, коли користувач питає, що Worker вміє.",
     ),
     {},
-    () => ({
+    async () => ({
       ok: true,
       name: env.HUB_NAME || "OneAIWorkers",
-      base_url: buildBaseUrl(request, env),
-      mcp_url: `${buildBaseUrl(request, env)}/mcp`,
+      version: APP_VERSION,
+      base_url: baseUrl,
+      mcp_url: `${baseUrl}/mcp`,
+      update: await getUpdateState(env, baseUrl),
       purpose: bilingualObject(
         "OneAIWorkers is a secure MCP gateway that exposes user-owned APIs as first-class ChatGPT tools.",
         "OneAIWorkers — це безпечний MCP gateway, який показує API користувача як first-class ChatGPT tools.",
@@ -133,7 +140,10 @@ function tool<T extends z.ZodRawShape>(
   handler: (args: z.infer<z.ZodObject<T>>) => Promise<unknown> | unknown,
   annotations: Record<string, boolean>,
 ) {
-  const callback = (async (args: unknown) => safeRun(() => handler(args as z.infer<z.ZodObject<T>>))) as never;
+  const callback = (async (args: unknown) => safeRun(
+    () => handler(args as z.infer<z.ZodObject<T>>),
+    serverUpdateNotices.get(server),
+  )) as never;
   const descriptor = {
     title,
     description,
@@ -186,12 +196,21 @@ function registerConnectorTools(server: McpServer, env: Env, connectorTools: Con
   }
 }
 
-async function safeRun(fn: () => Promise<unknown> | unknown) {
+async function safeRun(
+  fn: () => Promise<unknown> | unknown,
+  getNotice?: () => Promise<ReturnType<typeof updateNotice>>,
+) {
   try {
     const data = redactSensitiveValue(await fn());
-    return mcpText({ ok: true, data });
+    const update = await getNotice?.();
+    return mcpText({ ok: true, data, update });
   } catch (error) {
-    return mcpText({ ok: false, message: redactSensitiveText(`${biInline("Error", "Помилка")}: ${errorMessage(error)}`) });
+    const update = await getNotice?.();
+    return mcpText({
+      ok: false,
+      message: redactSensitiveText(`${biInline("Error", "Помилка")}: ${errorMessage(error)}`),
+      update,
+    });
   }
 }
 
