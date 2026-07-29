@@ -89,8 +89,8 @@ export default {
           name: env.HUB_NAME || "OneAIWorkers",
           version: APP_VERSION,
           description: bilingualObject(
-            "Secure remote MCP gateway for connecting ChatGPT to user-owned HTTP APIs through saved connector manifests on Cloudflare Workers.",
-            "Безпечний remote MCP gateway для підключення ChatGPT до HTTP API користувача через збережені connector manifests на Cloudflare Workers.",
+            "Secure remote MCP gateway for connecting ChatGPT, Claude, and other MCP-compatible clients to user-owned HTTP APIs through saved connector manifests on Cloudflare Workers.",
+            "Безпечний віддалений MCP-шлюз для підключення ChatGPT, Claude та інших MCP-сумісних клієнтів до HTTP API користувача через збережені налаштування конекторів на Cloudflare Workers.",
           ),
           mcp_endpoint: `${baseUrl}/mcp`,
           update_page: `${baseUrl}/update`,
@@ -118,7 +118,7 @@ export default {
               default_route: "main_gateway_only",
               main_gateway_tool: "call_connector_tool",
               supported_invocations: ["service_binding", "protected_url"],
-              direct_child_url: "optional for advanced/manual use, not required for ChatGPT",
+              direct_child_url: "optional for advanced/manual use, not required by normal MCP clients",
             },
           },
           oauth: isOAuthEnabled(env)

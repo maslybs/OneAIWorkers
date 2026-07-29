@@ -26,26 +26,27 @@ export function homeHtml(env: Env, baseUrl: string): string {
 </head>
 <body>
   <h1>${escapeHtml(title)}</h1>
-  <p class="muted">Secure remote MCP gateway for connecting ChatGPT to user-owned HTTP APIs through saved connector manifests.</p>
+  <p class="muted">Secure remote MCP gateway for connecting ChatGPT, Claude, and other MCP-compatible clients to user-owned HTTP APIs.</p>
   <p class="muted">Version ${escapeHtml(APP_VERSION)}</p>
 
   <div class="grid">
     <section class="card">
       <h2>English</h2>
       <p><strong>OneAIWorkers</strong> is a Cloudflare Worker MCP server for API automation.</p>
-      <p>The LLM plans and decides. The Worker validates requests, reads Cloudflare Secrets by name, calls external APIs, and returns compact structured results.</p>
+      <p>Connect it to ChatGPT, Claude, or another remote MCP client. The AI plans and decides while the Worker validates requests, reads Cloudflare Secrets by name, and calls external APIs.</p>
     </section>
     <section class="card">
       <h2>Українською</h2>
-      <p><strong>OneAIWorkers</strong> — це Cloudflare Worker MCP server для API-автоматизацій.</p>
-      <p>LLM планує й приймає рішення. Worker валідує запити, читає Cloudflare Secrets за назвою, викликає зовнішні API і повертає компактні структуровані результати.</p>
+      <p><strong>OneAIWorkers</strong> — це Cloudflare Worker MCP-сервер для автоматизації API.</p>
+      <p>Підключіть його до ChatGPT, Claude або іншого віддаленого MCP-клієнта. ШІ планує й приймає рішення, а Worker перевіряє запити, читає Cloudflare Secrets за назвою та викликає зовнішні API.</p>
     </section>
   </div>
 
   <section class="card">
     <h2>MCP endpoint</h2>
     <pre>${escapeHtml(mcpUrl)}</pre>
-    <p><span class="ok">Recommended:</span> connect from ChatGPT with OAuth.</p>
+    <p><span class="ok">Recommended:</span> connect ChatGPT, Claude, or another compatible client with OAuth.</p>
+    <p class="muted">Compatible with remote MCP clients that support Streamable HTTP and OAuth or Bearer authentication.</p>
     <p class="muted"><code>MCP_SHARED_SECRET</code> protects the OAuth approval page and manual API access. Do not put secrets in the URL.</p>
   </section>
 

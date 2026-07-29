@@ -15,6 +15,7 @@ await build({
     connectorResponse: path.join(root, "src", "tools", "connectors", "response.ts"),
     connectorTemplates: path.join(root, "src", "tools", "connectors", "templates.ts"),
     response: path.join(root, "src", "response.ts"),
+    homeHtml: path.join(root, "src", "html.ts"),
   },
   bundle: true,
   format: "esm",
@@ -26,8 +27,17 @@ const security = await import(pathToFileURL(path.join(outputDirectory, "security
 const connectorResponse = await import(pathToFileURL(path.join(outputDirectory, "connectorResponse.js")));
 const connectorTemplates = await import(pathToFileURL(path.join(outputDirectory, "connectorTemplates.js")));
 const responseHelpers = await import(pathToFileURL(path.join(outputDirectory, "response.js")));
+const homeHtmlHelpers = await import(pathToFileURL(path.join(outputDirectory, "homeHtml.js")));
 
 test.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
+
+test("home page names ChatGPT, Claude, and other MCP-compatible clients", () => {
+  const html = homeHtmlHelpers.homeHtml({}, "https://worker.example");
+  assert.match(html, /ChatGPT, Claude/u);
+  assert.match(html, /other MCP-compatible clients/u);
+  assert.match(html, /Streamable HTTP/u);
+  assert.match(html, /https:\/\/worker\.example\/mcp/u);
+});
 
 test("redacts secret values while preserving Cloudflare secret references", () => {
   const telegramToken = ["123456789", "ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghi"].join(":");

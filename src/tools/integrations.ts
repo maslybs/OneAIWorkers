@@ -541,7 +541,7 @@ function buildConnectorToolDescription(row: ConnectorActionToolRow, readOnly: bo
     readOnly ? "Read-only: this tool should not create external side effects." : "External side effect: this tool may change data, send messages, trigger workflows, or call an external API.",
   ];
   if (destructive) parts.push("Destructive action: use only after explicit user intent is clear.");
-  parts.push("ChatGPT should call this tool directly; routing to internal connectors or child Workers is handled by OneAIWorkers.");
+  parts.push("The MCP client should call this tool directly; routing to internal connectors or child Workers is handled by OneAIWorkers.");
   return parts.join(" ");
 }
 

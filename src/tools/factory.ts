@@ -48,7 +48,7 @@ export async function createChildWorkerFromTemplate(env: Env, args: z.infer<z.Zo
     direct_access: {
       available_if_workers_dev_domain_is_enabled: Boolean(expectedUrl),
       auth_header: "x-oneaiworkers-child-token",
-      intended_use: "Optional direct API access. ChatGPT should normally use the main OneAIWorkers MCP gateway instead.",
+      intended_use: "Optional direct API access. MCP clients should normally use the main OneAIWorkers gateway instead.",
     },
     next_step: biInline(
       "The child token was stored automatically as a Cloudflare Secret on the main Worker. Save this child Worker as a connector using child_worker_token_secret. Its actions will appear as top-level OneAIWorkers MCP tools after the next tools/list refresh.",

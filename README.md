@@ -25,12 +25,12 @@
 
 Both methods install OneAIWorkers in the user's own Cloudflare account. The simple installer is easier; the Git method gives developers direct control over the repository and deployment history.
 
-OneAIWorkers lets ChatGPT and other MCP clients use your APIs and tools while the access keys stay in your own Cloudflare account.
+OneAIWorkers lets ChatGPT, Claude, and other MCP-compatible clients use your APIs and tools while the access keys stay in your own Cloudflare account.
 
 You install one Worker, connect one `/mcp` address, and then add the connectors you need. A connector can read data from an API, send a webhook, call n8n, work with a CRM, or perform another approved action.
 
 ```text
-ChatGPT → your OneAIWorkers → your connectors and APIs
+ChatGPT / Claude / another MCP client → your OneAIWorkers → your connectors and APIs
 ```
 
 ## Why use it
@@ -39,7 +39,7 @@ ChatGPT → your OneAIWorkers → your connectors and APIs
 - The Worker and its D1 database belong to the user.
 - The installer creates a private access secret automatically.
 - API keys stay in Cloudflare Secrets and are not saved in connector settings.
-- Connector actions appear in ChatGPT as normal tools, such as `n8n_list_workflows`.
+- Connector actions appear in ChatGPT, Claude, and other MCP clients as normal tools, such as `n8n_list_workflows`.
 - Updates keep the existing database, connectors, and secrets.
 
 ## Install
@@ -58,24 +58,38 @@ The installer automatically creates:
 - a D1 database for OAuth and connector settings;
 - `MCP_SHARED_SECRET` for private access.
 
-## Connect ChatGPT
+## Connect an MCP client
 
-Add a custom MCP app in ChatGPT and use:
+All compatible clients use the same protected address:
 
 ```text
 Authentication: OAuth
 Server URL: https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
 
-When the sign-in page opens, enter the access secret saved during installation.
+### ChatGPT
 
-After connecting, ask ChatGPT:
+Add a custom MCP app, paste the `/mcp` address, and select OAuth. When the OneAIWorkers sign-in page opens, enter the access secret saved during installation.
+
+### Claude
+
+Open **Customize → Connectors → Add custom connector**, paste the `/mcp` address, and connect. Leave optional Client ID and Client Secret fields empty. OneAIWorkers registers the OAuth client automatically.
+
+Claude Desktop can also connect through `claude_desktop_config.json` and `mcp-remote` when the account connector screen is not available.
+
+### Other MCP clients
+
+Use the `/mcp` address as a remote MCP server with Streamable HTTP and OAuth. Clients without OAuth can send the access secret through an `Authorization: Bearer` header. Never put the secret in the URL.
+
+After connecting, ask your AI client:
 
 ```text
 Check my OneAIWorkers connector setup.
 ```
 
-ChatGPT should use `connector_setup_status`. It reports the database, saved connectors, generated tools, and missing secret names without showing secret values.
+The client should use `connector_setup_status`. It reports the database, saved connectors, generated tools, and missing secret names without showing secret values.
+
+See [Client setup](docs/CLIENTS.md) for complete ChatGPT, Claude Desktop, and generic MCP examples.
 
 ## Create a connector
 
@@ -84,11 +98,11 @@ A connector stores an API address, available actions, and the **name** of the re
 For example, to connect n8n:
 
 1. Add the real n8n key to your Worker as a Cloudflare secret named `N8N_API_KEY`.
-2. Ask ChatGPT to create a read-only n8n connector for your n8n address.
-3. Ask ChatGPT to test it with a dry run before making a real request.
+2. Ask your AI client to create a read-only n8n connector for your n8n address.
+3. Ask it to test the connector with a dry run before making a real request.
 4. Refresh or reconnect the MCP app so the new connector actions appear in the tool list.
 
-ChatGPT saves the connector through `save_connector`. OneAIWorkers stores it in D1. The real API key remains in Cloudflare Secrets.
+The AI client saves the connector through `save_connector`. OneAIWorkers stores it in D1. The real API key remains in Cloudflare Secrets.
 
 Example request:
 
@@ -160,6 +174,7 @@ See:
 - [Manual installation](docs/INSTALL.md)
 - [Developer deployment through Git](docs/DEPLOY_TO_CLOUDFLARE.md)
 - [Prompts](docs/PROMPTS.md)
+- [ChatGPT, Claude, and other MCP clients](docs/CLIENTS.md)
 
 ## License
 
