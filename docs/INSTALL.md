@@ -10,14 +10,14 @@ It does not need a database for AI memory. The AI assistant keeps memory and dec
 
 This is the easiest way.
 
-1. Open the OneAIWorkers installer page.
+1. Open the [OneAIWorkers installer](https://workers.bgdn.dev).
 2. Sign in with Cloudflare.
 3. Select a Cloudflare account.
 4. Click **Install**.
 5. Save the `/mcp` URL and shared secret.
 6. Add the URL to ChatGPT or another MCP client.
 
-End users do not need GitHub, Node.js, or Wrangler. Maintainer details: [`INSTALLER.md`](INSTALLER.md).
+End users do not need GitHub, Node.js, or Wrangler.
 
 ## Option B: Cloudflare button for developers
 

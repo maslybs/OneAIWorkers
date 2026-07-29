@@ -2,7 +2,7 @@
 
 [Ukrainian version](DEPLOY_TO_CLOUDFLARE.uk.md)
 
-This button remains an advanced option for developers. It requires GitHub or GitLab. For end users, use the [installer without GitHub](INSTALLER.md).
+This button remains an advanced option for developers. It requires GitHub or GitLab. For end users, use the [OneAIWorkers installer](https://workers.bgdn.dev).
 
 It works with this public GitHub repository:
 

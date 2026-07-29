@@ -10,14 +10,14 @@ OneAIWorkers — це невеликий Cloudflare Worker, який дає AI-�
 
 Це найпростіший спосіб.
 
-1. Відкрийте сторінку встановлення OneAIWorkers.
+1. Відкрийте [сторінку встановлення OneAIWorkers](https://workers.bgdn.dev/?lang=uk).
 2. Натисніть **Увійти через Cloudflare**.
 3. Виберіть обліковий запис Cloudflare.
 4. Натисніть **Встановити**.
 5. Збережіть показані адресу `/mcp` і спільний секрет.
 6. Додайте адресу в ChatGPT або інший MCP-клієнт.
 
-Користувачу не потрібні GitHub, Node.js або Wrangler. Детальніше для власника проєкту: [`INSTALLER.uk.md`](INSTALLER.uk.md).
+Користувачу не потрібні GitHub, Node.js або Wrangler.
 
 ## Варіант B: кнопка Cloudflare для розробників
 

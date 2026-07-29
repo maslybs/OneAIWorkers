@@ -12,6 +12,6 @@ MCP cannot show a notification while the client is not using the Worker. The che
 
 The update link never contains keys, tokens, or secrets. The `/update` page runs on the user's Worker. Cloudflare authorization begins only after the user presses the update button.
 
-The bundled service in [`installer/`](../installer/) verifies ownership for `workers.dev` addresses and requires the `OAUTH_DB` and `MCP_SHARED_SECRET` bindings. Cloudflare inherits all existing bindings during the code upload, so secret values are neither read nor sent to the installer.
+The central service at [workers.bgdn.dev](https://workers.bgdn.dev) verifies ownership for `workers.dev` addresses and requires the `OAUTH_DB` and `MCP_SHARED_SECRET` bindings. Cloudflare inherits all existing bindings during the code upload, so secret values are neither read nor sent to the installer. The installer is maintained in a separate private project.
 
 See [UPDATES.uk.md](UPDATES.uk.md) for configuration and security details.

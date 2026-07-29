@@ -2,7 +2,9 @@
 
 [Українська версія](README.uk.md)
 
-For end users, the primary path is the [installer without GitHub](docs/INSTALLER.md). The project owner deploys it once; users then sign in only to Cloudflare and click **Install**.
+For end users, the primary path is the [OneAIWorkers installer](https://workers.bgdn.dev). Users sign in only to Cloudflare and click **Install**.
+
+**[Install OneAIWorkers](https://workers.bgdn.dev)**
 
 Advanced developer option:
 
@@ -149,8 +151,6 @@ It is not used as AI memory. Your AI assistant keeps the memory and schedule. On
 Open the installer page published by the OneAIWorkers owner. Sign in to Cloudflare, select an account, and click **Install**.
 
 GitHub is not required. The installer creates D1 and `MCP_SHARED_SECRET` automatically. On success, save the `/mcp` URL and shared secret; the secret is shown only once.
-
-Maintainer setup: [installer without GitHub](docs/INSTALLER.md).
 
 After deploy, use `connector_setup_status` to see the real state of D1, saved connectors, configured secrets, and missing secrets. It reports secret names only; values stay hidden.
 
