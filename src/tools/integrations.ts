@@ -236,7 +236,18 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
   ).bind(crypto.randomUUID(), connectorId, null, "save_connector", 1, `Saved ${args.actions.length} actions`, now));
 
   await db.batch(statements);
-  return { ok: true, connector_id: connectorId, actions: args.actions.length, mode };
+  return {
+    ok: true,
+    connector_id: connectorId,
+    actions: args.actions.length,
+    mode,
+    tool_names: args.actions.map((action) => `${toolNamePart(connectorId)}_${toolNamePart(action.name)}`),
+    refresh_required: true,
+    next_step: biInline(
+      "Refresh the MCP tool list once. The saved actions will then be available as top-level tools.",
+      "Оновіть список MCP-інструментів один раз. Після цього збережені дії з’являться як окремі інструменти.",
+    ),
+  };
 }
 
 export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof listConnectorsSchema>>) {

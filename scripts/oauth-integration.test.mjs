@@ -132,6 +132,20 @@ async function tokenRequest(baseUrl, fields) {
   return { response, payload };
 }
 
+async function mcpRequest(baseUrl, accessToken, id, method, params = {}) {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
 test("OAuth uses S256, rotates refresh tokens, checks resource, revokes, and rate limits", async (t) => {
   const worker = await startWorker();
   t.after(() => worker.stop());
@@ -220,6 +234,19 @@ test("OAuth uses S256, rotates refresh tokens, checks resource, revokes, and rat
     headers: { authorization: `Bearer ${issued.payload.access_token}` },
   });
   assert.notEqual(headerAccess.status, 401);
+
+  const listedTools = await mcpRequest(worker.baseUrl, issued.payload.access_token, 100, "tools/list");
+  const toolNames = listedTools.result.tools.map((item) => item.name);
+  assert.ok(toolNames.includes("save_connector"));
+  assert.ok(toolNames.includes("connector_setup_status"));
+
+  const qualifiedToolCall = await mcpRequest(worker.baseUrl, issued.payload.access_token, 101, "tools/call", {
+    name: "MyWork.connector_setup_status",
+    arguments: { include_connectors: true },
+  });
+  assert.equal(qualifiedToolCall.result.isError, false);
+  assert.equal(qualifiedToolCall.result.structuredContent.ok, true);
+  assert.equal(qualifiedToolCall.result.structuredContent.data.ok, true);
 
   const queryAccess = await fetch(
     `${worker.baseUrl}/mcp?access_token=${encodeURIComponent(issued.payload.access_token)}`,

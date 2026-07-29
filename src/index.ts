@@ -16,6 +16,7 @@ import type { Env } from "./types";
 import { errorMessage, json, text } from "./response";
 import { APP_VERSION, getUpdateState, updateServiceStartUrl } from "./update";
 import { updatePageHtml } from "./update-page";
+import { normalizeMcpToolCallRequest } from "./mcp-request";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -167,7 +168,8 @@ export default {
       if (url.pathname === "/mcp") {
         if (!(await isMcpAuthorized(request, env))) return unauthorized(request, env);
         const server = await createMcpServer(env, request);
-        return createMcpHandler(server, { enableJsonResponse: true })(request, env, ctx);
+        const normalizedRequest = await normalizeMcpToolCallRequest(request);
+        return createMcpHandler(server, { enableJsonResponse: true })(normalizedRequest, env, ctx);
       }
 
       if (url.pathname === "/robots.txt") {
