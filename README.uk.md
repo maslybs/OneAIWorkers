@@ -2,7 +2,28 @@
 
 [English version](README.md)
 
-**[Встановити OneAIWorkers](https://workers.bgdn.dev/?lang=uk)**
+## Виберіть спосіб встановлення
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <h3>Просте встановлення</h3>
+      <p>Без GitHub і командного рядка. Увійдіть у Cloudflare та встановіть.</p>
+      <a href="https://workers.bgdn.dev/?lang=uk">
+        <img alt="Встановити OneAIWorkers — рекомендовано" src="https://img.shields.io/badge/ВСТАНОВИТИ_OneAIWorkers-РЕКОМЕНДОВАНО-2563EB?style=for-the-badge&amp;logo=cloudflare&amp;logoColor=white">
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <h3>Встановлення для розробників</h3>
+      <p>Створіть сховище GitHub або GitLab та автоматично розгортайте кожну зміну.</p>
+      <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers">
+        <img alt="Розгорнути через Git — для розробників" src="https://img.shields.io/badge/РОЗГОРНУТИ_ЧЕРЕЗ_GIT-ДЛЯ_РОЗРОБНИКІВ-F97316?style=for-the-badge&amp;logo=github&amp;logoColor=white">
+      </a>
+    </td>
+  </tr>
+</table>
+
+Обидва способи встановлюють OneAIWorkers у власний обліковий запис Cloudflare користувача. Простий встановлювач зручніший, а спосіб через Git дає розробнику прямий контроль над сховищем та історією розгортань.
 
 OneAIWorkers дає ChatGPT та іншим MCP-клієнтам доступ до ваших API й інструментів. При цьому ключі залишаються у вашому обліковому записі Cloudflare.
 
@@ -14,7 +35,7 @@ ChatGPT → ваш OneAIWorkers → ваші конектори й API
 
 ## Чому це зручно
 
-- Для звичайного встановлення не потрібен GitHub.
+- Для простого встановлення не потрібен GitHub.
 - Worker і база D1 належать користувачу.
 - Встановлювач сам створює приватний секрет доступу.
 - Ключі API залишаються в Cloudflare Secrets і не записуються в налаштування конектора.

@@ -2,7 +2,28 @@
 
 [Українська версія](README.uk.md)
 
-**[Install OneAIWorkers](https://workers.bgdn.dev)**
+## Choose how to install
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <h3>Simple installation</h3>
+      <p>No GitHub or command line. Sign in to Cloudflare and install.</p>
+      <a href="https://workers.bgdn.dev">
+        <img alt="Install OneAIWorkers — Recommended" src="https://img.shields.io/badge/INSTALL_OneAIWorkers-RECOMMENDED-2563EB?style=for-the-badge&amp;logo=cloudflare&amp;logoColor=white">
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <h3>Developer installation</h3>
+      <p>Create a GitHub or GitLab repository and deploy every push automatically.</p>
+      <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers">
+        <img alt="Deploy with Git — For developers" src="https://img.shields.io/badge/DEPLOY_WITH_GIT-FOR_DEVELOPERS-F97316?style=for-the-badge&amp;logo=github&amp;logoColor=white">
+      </a>
+    </td>
+  </tr>
+</table>
+
+Both methods install OneAIWorkers in the user's own Cloudflare account. The simple installer is easier; the Git method gives developers direct control over the repository and deployment history.
 
 OneAIWorkers lets ChatGPT and other MCP clients use your APIs and tools while the access keys stay in your own Cloudflare account.
 
@@ -14,7 +35,7 @@ ChatGPT → your OneAIWorkers → your connectors and APIs
 
 ## Why use it
 
-- No GitHub account is needed for the normal installation.
+- No GitHub account is needed for the simple installation.
 - The Worker and its D1 database belong to the user.
 - The installer creates a private access secret automatically.
 - API keys stay in Cloudflare Secrets and are not saved in connector settings.
