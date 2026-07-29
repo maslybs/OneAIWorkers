@@ -175,6 +175,7 @@ export async function connectorSetupStatus(env: Env, args: z.infer<z.ZodObject<t
     d1_database: Boolean(env.OAUTH_DB),
     mcp_shared_secret: Boolean(env.MCP_SHARED_SECRET),
     workers_ai: Boolean(env.AI),
+    agent_manager: Boolean(env.AGENT_MANAGER),
     worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
     notifications: {
       telegram: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),

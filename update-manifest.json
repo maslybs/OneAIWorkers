@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.6.4",
+  "latest_version": "0.7.0",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.6.4 adds native Cloudflare Workers AI tools, curated model profiles, transparent model metadata and deterministic model recommendations.",
-    "uk": "OneAIWorkers 0.6.4 додає нативні інструменти Cloudflare Workers AI, керовані профілі моделей, прозорі metadata моделей і детерміновані рекомендації моделі."
+    "en": "OneAIWorkers 0.7.0 adds data-defined AI agents and teams, proposal-only orchestration plans, preflight USD cost estimates, durable queued runs, progress status, budgets, enable/disable controls, and cooperative cancellation without creating extra Workers or API keys.",
+    "uk": "OneAIWorkers 0.7.0 додає data-defined AI агентів і команди, proposal-only плани оркестрації, попередню оцінку вартості в USD, durable queued runs, статус прогресу, бюджети, enable/disable controls і cooperative cancellation без створення додаткових Workers або API-ключів."
   }
 }

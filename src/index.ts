@@ -18,6 +18,8 @@ import { APP_VERSION, getUpdateState, updateServiceStartUrl } from "./update";
 import { updatePageHtml } from "./update-page";
 import { normalizeMcpToolCallRequest } from "./mcp-request";
 
+export { AgentManager } from "./agents";
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
@@ -129,14 +131,30 @@ export default {
               }
             : { enabled: false },
           model: bilingualObject(
-            "LLM owns memory, scheduling, and reasoning. Worker executes safe actions.",
-            "LLM відповідає за памʼять, розклад і reasoning. Worker виконує безпечні дії.",
+            "The MCP client can use direct tools or create data-defined agent teams. OneAIWorkers stores agent state and queued orchestration runs in a SQLite-backed Durable Object and executes bounded Workers AI steps with budgets and cancellation controls.",
+            "MCP-клієнт може використовувати прямі tools або створювати data-defined команди агентів. OneAIWorkers зберігає стан агентів і queued orchestration runs у SQLite-backed Durable Object та виконує обмежені Workers AI кроки з бюджетами й cancellation controls.",
           ),
           tools: [
             "fetch_url",
             "fetch_many_urls",
             "fetch_rss",
             "check_url_status",
+            "ai_capabilities",
+            "ai_models_list",
+            "ai_recommend_model",
+            "ai_chat",
+            "agent_capabilities",
+            "agent_team_propose",
+            "agent_create",
+            "agent_list",
+            "agent_update",
+            "agent_team_create",
+            "agent_team_list",
+            "agent_team_update",
+            "agent_team_start",
+            "agent_run_list",
+            "agent_run_status",
+            "agent_run_cancel",
             "send_notification",
             "call_webhook",
             "save_connector",

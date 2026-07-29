@@ -18,6 +18,9 @@ export interface Env {
   // Native Cloudflare Workers AI binding configured as [ai] binding = "AI".
   AI?: WorkersAiBinding;
 
+  // SQLite-backed Durable Object namespace for data-defined agents and teams.
+  AGENT_MANAGER?: DurableObjectNamespace;
+
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;

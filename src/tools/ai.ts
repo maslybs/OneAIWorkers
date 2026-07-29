@@ -13,7 +13,7 @@ const MAX_EMBEDDING_ITEM_CHARS = 20_000;
 const MAX_RESULT_CHARS = 600_000;
 const MODEL_CATALOG_VERIFIED_AT = "2026-07-29";
 
-const MODEL_PROFILES = {
+export const MODEL_PROFILES = {
   fast: "@cf/zai-org/glm-4.7-flash",
   balanced: "@cf/openai/gpt-oss-20b",
   reasoning: "@cf/openai/gpt-oss-120b",
@@ -24,7 +24,7 @@ const MODEL_PROFILES = {
   embedding: "@cf/qwen/qwen3-embedding-0.6b",
 } as const;
 
-type ChatProfile = "fast" | "balanced" | "reasoning" | "vision" | "coding" | "agentic";
+export type ChatProfile = "fast" | "balanced" | "reasoning" | "vision" | "coding" | "agentic";
 type ModelTask = "text-generation" | "embeddings";
 type CostTier = "low" | "medium" | "high" | "premium";
 type LatencyTier = "fast" | "balanced" | "slower";

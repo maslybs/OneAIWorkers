@@ -10,6 +10,15 @@ compatibility_flags = ["nodejs_compat"]
 [ai]
 binding = "AI"
 
+# Data-defined agents, teams, queued runs, and cancellation state.
+[[durable_objects.bindings]]
+name = "AGENT_MANAGER"
+class_name = "AgentManager"
+
+[[migrations]]
+tag = "v1-agents"
+new_sqlite_classes = ["AgentManager"]
+
 # D1 is used for OAuth, connector registry, connector actions, and audit records.
 [[d1_databases]]
 binding = "OAUTH_DB"

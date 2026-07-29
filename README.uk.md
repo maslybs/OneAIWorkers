@@ -56,6 +56,8 @@ ChatGPT / Claude / інший MCP-клієнт → ваш OneAIWorkers → ва�
 
 - Worker OneAIWorkers;
 - базу D1 для OAuth і налаштувань конекторів;
+- native binding Workers AI;
+- SQLite-backed Durable Object namespace для агентів, команд, runs, бюджетів і cancellation state;
 - `MCP_SHARED_SECRET` для приватного доступу.
 
 ## Підключення MCP-клієнта
@@ -158,6 +160,14 @@ fetch_url
 fetch_many_urls
 fetch_rss
 check_url_status
+ai_models_list
+ai_recommend_model
+ai_chat
+agent_team_propose
+agent_team_create
+agent_team_start
+agent_run_status
+agent_run_cancel
 send_notification
 call_webhook
 ```
@@ -170,6 +180,7 @@ OneAIWorkers може створювати захищені дочірні Worke
 
 Додаткові сторінки:
 
+- [Агенти та команди агентів](docs/AGENTS.uk.md)
 - [Дочірні Workers](docs/CHILD_WORKERS.uk.md)
 - [Ручне встановлення](docs/INSTALL.uk.md)
 - [Встановлення через Git для розробників](docs/DEPLOY_TO_CLOUDFLARE.uk.md)

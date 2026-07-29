@@ -56,6 +56,8 @@ The installer automatically creates:
 
 - the OneAIWorkers Worker;
 - a D1 database for OAuth and connector settings;
+- a native Workers AI binding;
+- a SQLite-backed Durable Object namespace for agents, teams, runs, budgets, and cancellation state;
 - `MCP_SHARED_SECRET` for private access.
 
 ## Connect an MCP client
@@ -158,6 +160,14 @@ fetch_url
 fetch_many_urls
 fetch_rss
 check_url_status
+ai_models_list
+ai_recommend_model
+ai_chat
+agent_team_propose
+agent_team_create
+agent_team_start
+agent_run_status
+agent_run_cancel
 send_notification
 call_webhook
 ```
@@ -170,6 +180,7 @@ OneAIWorkers can also create protected child Workers for tasks that need custom 
 
 See:
 
+- [Agents and agent teams](docs/AGENTS.md)
 - [Child Workers](docs/CHILD_WORKERS.md)
 - [Manual installation](docs/INSTALL.md)
 - [Developer deployment through Git](docs/DEPLOY_TO_CLOUDFLARE.md)

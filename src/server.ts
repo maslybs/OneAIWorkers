@@ -4,6 +4,40 @@ import { bi, bilingualObject, biInline } from "./i18n";
 import type { Env } from "./types";
 import { buildBaseUrl } from "./auth";
 import { errorMessage, mcpText } from "./response";
+import {
+  agentCapabilities,
+  agentCapabilitiesSchema,
+  agentCreate,
+  agentCreateSchema,
+  agentDelete,
+  agentDeleteSchema,
+  agentGet,
+  agentGetSchema,
+  agentList,
+  agentListSchema,
+  agentRunCancel,
+  agentRunCancelSchema,
+  agentRunList,
+  agentRunListSchema,
+  agentRunStatus,
+  agentRunStatusSchema,
+  agentTeamCreate,
+  agentTeamCreateSchema,
+  agentTeamDelete,
+  agentTeamDeleteSchema,
+  agentTeamGet,
+  agentTeamGetSchema,
+  agentTeamList,
+  agentTeamListSchema,
+  agentTeamPropose,
+  agentTeamProposeSchema,
+  agentTeamStart,
+  agentTeamStartSchema,
+  agentTeamUpdate,
+  agentTeamUpdateSchema,
+  agentUpdate,
+  agentUpdateSchema,
+} from "./agents";
 import { aiCapabilities, aiCapabilitiesSchema, aiChat, aiChatSchema, aiEmbeddings, aiEmbeddingsSchema, aiExtractJson, aiExtractJsonSchema, aiModelsList, aiModelsListSchema, aiRecommendModel, aiRecommendModelSchema, aiRun, aiRunSchema } from "./tools/ai";
 import { redactSensitiveText, redactSensitiveValue } from "./security";
 import { checkUrlStatus, checkUrlStatusSchema, fetchManyUrls, fetchManyUrlsSchema, fetchRss, fetchRssSchema, fetchUrl, fetchUrlSchema } from "./tools/observe";
@@ -16,6 +50,7 @@ const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: ["mcp"] }] as const;
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const READ_EXTERNAL = { readOnlyHint: true, destructiveHint: false, openWorldHint: true };
+const WRITE_INTERNAL = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 const WRITE_EXTERNAL = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
 const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
 const serverUpdateNotices = new WeakMap<McpServer, () => Promise<ReturnType<typeof updateNotice>>>();
@@ -39,6 +74,22 @@ const STATIC_TOOL_NAMES = [
   "ai_embeddings",
   "ai_extract_json",
   "ai_run",
+  "agent_capabilities",
+  "agent_team_propose",
+  "agent_create",
+  "agent_list",
+  "agent_get",
+  "agent_update",
+  "agent_delete",
+  "agent_team_create",
+  "agent_team_list",
+  "agent_team_get",
+  "agent_team_update",
+  "agent_team_delete",
+  "agent_team_start",
+  "agent_run_list",
+  "agent_run_status",
+  "agent_run_cancel",
   "send_notification",
   "call_webhook",
   "create_child_worker_from_template",
@@ -135,6 +186,23 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
   tool(server, "ai_embeddings", "Create Workers AI embeddings", bi("Creates text embeddings through the native Workers AI binding using a curated multilingual model by default and reports the exact selected model.", "Створює text embeddings через native Workers AI binding, за замовчуванням використовуючи curated multilingual модель, і повертає точну обрану модель."), aiEmbeddingsSchema, (args) => aiEmbeddings(env, args), READ_EXTERNAL);
   tool(server, "ai_extract_json", "Extract structured JSON with Workers AI", bi("Uses an active structured-output model to extract an object according to a supplied JSON Schema and reports the exact selected model.", "Використовує активну structured-output модель для extraction об'єкта за переданою JSON Schema і повертає точну обрану модель."), aiExtractJsonSchema, (args) => aiExtractJson(env, args), READ_EXTERNAL);
   tool(server, "ai_run", "Run advanced Workers AI request", bi("Runs an advanced non-streaming Workers AI request. Only @cf/ models are accepted; unlisted models require explicit opt-in. This operation may consume Workers AI quota.", "Запускає advanced non-streaming Workers AI request. Дозволені лише @cf/ моделі; unlisted моделі потребують явного opt-in. Операція може використовувати квоту Workers AI."), aiRunSchema, (args) => aiRun(env, args), READ_EXTERNAL);
+
+  tool(server, "agent_capabilities", "Agent orchestration capabilities", bi("Shows whether the Durable Object agent registry and Workers AI bindings are configured, plus lifecycle, cost, and cancellation limits.", "Показує, чи налаштовані Durable Object registry агентів і Workers AI bindings, а також lifecycle, cost і cancellation limits."), agentCapabilitiesSchema, () => agentCapabilities(env), READ_ONLY);
+  tool(server, "agent_team_propose", "Propose an agent team", bi("Proposes a senior coordinator and specialist agents for a task, with responsibilities, orchestration stages, expected results, and a preflight USD cost estimate. This never creates agents.", "Пропонує старшого координатора і спеціалістів для задачі з відповідальністю, етапами оркестрації, очікуваними результатами та попередньою оцінкою вартості в USD. Агентів не створює."), agentTeamProposeSchema, agentTeamPropose, READ_ONLY);
+  tool(server, "agent_create", "Create agent", bi("Creates one data-defined agent in the Durable Object registry after explicit confirmation.", "Створює одного data-defined агента в Durable Object registry після явного підтвердження."), agentCreateSchema, (args) => agentCreate(env, args), WRITE_INTERNAL);
+  tool(server, "agent_list", "List agents", bi("Lists saved agents and whether each agent is enabled.", "Показує збережених агентів і чи кожен агент увімкнений."), agentListSchema, (args) => agentList(env, args), READ_ONLY);
+  tool(server, "agent_get", "Get agent", bi("Returns one saved agent configuration without running it.", "Повертає конфігурацію одного агента без запуску."), agentGetSchema, (args) => agentGet(env, args), READ_ONLY);
+  tool(server, "agent_update", "Update agent", bi("Updates an agent role, model, limits, or enabled state after explicit confirmation.", "Оновлює роль, модель, ліміти або enabled state агента після явного підтвердження."), agentUpdateSchema, (args) => agentUpdate(env, args), WRITE_INTERNAL);
+  tool(server, "agent_delete", "Delete agent", bi("Deletes an unused agent after explicit confirmation. Agents assigned to teams cannot be deleted directly.", "Видаляє невикористовуваного агента після явного підтвердження. Агента в команді не можна видалити напряму."), agentDeleteSchema, (args) => agentDelete(env, args), DESTRUCTIVE);
+  tool(server, "agent_team_create", "Create agent team", bi("Creates a confirmed coordinator-and-specialists team from a reviewed proposal. No new Worker or code deployment is created.", "Створює підтверджену команду координатора і спеціалістів із перевіреної пропозиції. Новий Worker або deployment коду не створюється."), agentTeamCreateSchema, (args) => agentTeamCreate(env, args), WRITE_INTERNAL);
+  tool(server, "agent_team_list", "List agent teams", bi("Lists saved agent teams and their enabled state.", "Показує збережені команди агентів та їх enabled state."), agentTeamListSchema, (args) => agentTeamList(env, args), READ_ONLY);
+  tool(server, "agent_team_get", "Get agent team", bi("Returns a team, its agents, orchestration settings, and current cost estimate.", "Повертає команду, її агентів, orchestration settings і поточну оцінку вартості."), agentTeamGetSchema, (args) => agentTeamGet(env, args), READ_ONLY);
+  tool(server, "agent_team_update", "Update agent team", bi("Updates membership, coordinator, limits, budget, rounds, or enabled state after explicit confirmation.", "Оновлює склад, координатора, ліміти, бюджет, rounds або enabled state після явного підтвердження."), agentTeamUpdateSchema, (args) => agentTeamUpdate(env, args), WRITE_INTERNAL);
+  tool(server, "agent_team_delete", "Delete agent team", bi("Deletes an agent team and optionally its now-unused agents after explicit confirmation.", "Видаляє команду агентів і опційно її вже невикористовуваних агентів після явного підтвердження."), agentTeamDeleteSchema, (args) => agentTeamDelete(env, args), DESTRUCTIVE);
+  tool(server, "agent_team_start", "Start agent team run", bi("Starts a durable queued agent run after explicit confirmation. The Worker checks the preflight USD estimate against the configured maximum budget before any AI call.", "Запускає durable queued run агентів після явного підтвердження. До першого AI call Worker перевіряє попередню оцінку в USD відносно максимального бюджету."), agentTeamStartSchema, (args) => agentTeamStart(env, args), WRITE_EXTERNAL);
+  tool(server, "agent_run_list", "List agent runs", bi("Lists recent queued, running, completed, failed, and cancelled agent runs.", "Показує останні queued, running, completed, failed і cancelled запуски агентів."), agentRunListSchema, (args) => agentRunList(env, args), READ_ONLY);
+  tool(server, "agent_run_status", "Get agent run status", bi("Returns the current orchestration stage, specialist outputs, estimated usage, error, or final result for one run.", "Повертає поточний етап оркестрації, outputs спеціалістів, estimated usage, помилку або фінальний результат одного run."), agentRunStatusSchema, (args) => agentRunStatus(env, args), READ_ONLY);
+  tool(server, "agent_run_cancel", "Cancel agent run", bi("Requests cooperative cancellation after explicit confirmation. A Workers AI request already in flight cannot be interrupted, but no next step will start.", "Запитує cooperative cancellation після явного підтвердження. Workers AI request, що вже виконується, не переривається, але наступний крок не почнеться."), agentRunCancelSchema, (args) => agentRunCancel(env, args), DESTRUCTIVE);
 
   tool(server, "send_notification", "Send notification", bi("Sends a message through configured Telegram, Discord, Slack, or generic webhook integration. This creates an external side effect.", "Надсилає повідомлення через налаштований Telegram, Discord, Slack або generic webhook. Це створює зовнішній side effect."), sendNotificationSchema, (args) => sendNotification(env, args), WRITE_EXTERNAL);
   tool(server, "call_webhook", "Call webhook", bi("Calls a public HTTPS webhook with a JSON payload. Use for user-approved automation callbacks only.", "Викликає публічний HTTPS webhook з JSON payload. Використовуйте тільки для підтверджених користувачем automation callbacks."), callWebhookSchema, callWebhook, WRITE_EXTERNAL);
@@ -311,6 +379,7 @@ function configuredFlags(env: Env) {
     slack: Boolean(env.SLACK_WEBHOOK_URL),
     default_webhook: Boolean(env.DEFAULT_WEBHOOK_URL),
     workers_ai: Boolean(env.AI),
+    agent_manager: Boolean(env.AGENT_MANAGER),
     worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
   };
 }
