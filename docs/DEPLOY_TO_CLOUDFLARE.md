@@ -2,7 +2,7 @@
 
 [Ukrainian version](DEPLOY_TO_CLOUDFLARE.uk.md)
 
-The easiest way to install OneAIWorkers is the **Deploy to Cloudflare** button in the README.
+This button remains an advanced option for developers. It requires GitHub or GitLab. For end users, use the [installer without GitHub](INSTALLER.md).
 
 It works with this public GitHub repository:
 

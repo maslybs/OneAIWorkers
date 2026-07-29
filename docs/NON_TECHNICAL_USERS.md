@@ -34,11 +34,13 @@ Optional:
 
 ## Simple setup
 
-1. Click **Deploy to Cloudflare** in the README.
-2. Deploy the Worker.
-3. Copy the `/mcp` URL.
-4. Add the URL to ChatGPT or another MCP client.
-5. Add optional secrets if you want messages or private access.
+1. Open the OneAIWorkers installer page.
+2. Sign in to Cloudflare.
+3. Select an account and click **Install**.
+4. Save the `/mcp` URL and shared secret.
+5. Add the URL to ChatGPT or another MCP client.
+
+GitHub, Node.js, and manual D1 creation are not required. Extra secrets are needed only for notifications or other external services.
 
 ## First prompt
 

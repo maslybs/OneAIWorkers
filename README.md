@@ -2,6 +2,10 @@
 
 [Українська версія](README.uk.md)
 
+For end users, the primary path is the [installer without GitHub](docs/INSTALLER.md). The project owner deploys it once; users then sign in only to Cloudflare and click **Install**.
+
+Advanced developer option:
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
 
 OneAIWorkers gives your AI assistant safe hands.
@@ -54,7 +58,7 @@ OneAIWorkers has two modes.
 
 ### 1. Basic mode
 
-This is the default mode. It works after one-click deploy.
+This is the default mode. It works after the simple installer or the legacy deploy button.
 
 The main Worker stores connector settings in D1 and executes API calls itself.
 
@@ -122,7 +126,7 @@ Custom code should be reviewed before deploy. OneAIWorkers blocks some dangerous
 
 ## What is created during install
 
-The deploy button installs the main Worker.
+The simple installer deploys the main Worker and creates D1 and the access secret automatically.
 
 Cloudflare can also create the D1 database from `wrangler.toml`.
 
@@ -142,15 +146,11 @@ It is not used as AI memory. Your AI assistant keeps the memory and schedule. On
 
 ### Step 1. Deploy
 
-Click the button:
+Open the installer page published by the OneAIWorkers owner. Sign in to Cloudflare, select an account, and click **Install**.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
+GitHub is not required. The installer creates D1 and `MCP_SHARED_SECRET` automatically. On success, save the `/mcp` URL and shared secret; the secret is shown only once.
 
-Cloudflare will ask you to connect your account and deploy the Worker.
-
-The first deploy is intentionally minimal, but it still asks for one required secret: `MCP_SHARED_SECRET`. This protects OAuth connection and manual MCP access.
-
-Generate a long random value and save it during deploy.
+Maintainer setup: [installer without GitHub](docs/INSTALLER.md).
 
 After deploy, use `connector_setup_status` to see the real state of D1, saved connectors, configured secrets, and missing secrets. It reports secret names only; values stay hidden.
 

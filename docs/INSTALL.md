@@ -6,20 +6,24 @@ OneAIWorkers is a small Cloudflare Worker that gives an AI assistant safe action
 
 It does not need a database for AI memory. The AI assistant keeps memory and decides what to do. OneAIWorkers uses a small D1 database for OAuth, connector settings, connector actions, and audit records.
 
-## Option A: Deploy button
+## Option A: simple installer without GitHub
 
 This is the easiest way.
 
-1. Open the repository README.
-2. Click **Deploy to Cloudflare**.
-3. Sign in to Cloudflare.
-4. Wait until the Worker is deployed.
-5. Copy the `/mcp` URL.
-6. Add it to ChatGPT or another MCP client.
+1. Open the OneAIWorkers installer page.
+2. Sign in with Cloudflare.
+3. Select a Cloudflare account.
+4. Click **Install**.
+5. Save the `/mcp` URL and shared secret.
+6. Add the URL to ChatGPT or another MCP client.
 
-More details: [`DEPLOY_TO_CLOUDFLARE.md`](DEPLOY_TO_CLOUDFLARE.md).
+End users do not need GitHub, Node.js, or Wrangler. Maintainer details: [`INSTALLER.md`](INSTALLER.md).
 
-## Option B: Manual install
+## Option B: Cloudflare button for developers
+
+The legacy deploy button remains available, but Cloudflare connects GitHub or GitLab. See [`DEPLOY_TO_CLOUDFLARE.md`](DEPLOY_TO_CLOUDFLARE.md).
+
+## Option C: Manual install
 
 ### 1. Requirements
 

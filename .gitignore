@@ -21,6 +21,7 @@ build/
 .cache/
 .tmp/
 tmp/
+installer/generated/oneaiworkers-bundle.js
 
 # Package manager logs / Логи package manager
 npm-debug.log*
