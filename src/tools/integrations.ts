@@ -6,6 +6,7 @@ import { applyConnectorAuth, authSchema, getAuthSecretNames, getSecret, isSecret
 import { buildConnectorResponse } from "./connectors/response";
 import { assertUrlTemplateInput, parseJson, parseJsonObject, redactTemplatedUrl, renderScalar, renderTemplate, renderUrlString, truncate, validateTemplatedUrl } from "./connectors/templates";
 import type { ActionRow, AuthConfig, ConnectorMode, ConnectorRow, JsonObject } from "./connectors/types";
+import { callNativeTool, isNativeConnectorId, nativeConnectorView } from "./native";
 
 const MAX_RESPONSE_TEXT = 24_000;
 
@@ -214,6 +215,12 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
   await ensureConnectorSchema(env);
 
   const connectorId = safeKey(args.connector_id).replaceAll(":", "-");
+  if (isNativeConnectorId(connectorId)) {
+    throw new Error(biInline(
+      "The native connector ID is reserved by OneAIWorkers and cannot be overwritten.",
+      "ID native connector зарезервований OneAIWorkers і не може бути перезаписаний.",
+    ));
+  }
   const now = nowSeconds();
   const mode = args.mode || "internal";
   if (mode === "child_worker") validateChildWorkerConfig(args.child_worker_url, args.child_worker_binding, args.child_worker_token_secret);
@@ -253,10 +260,12 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
 }
 
 export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof listConnectorsSchema>>) {
+  const connectors: JsonObject[] = [nativeConnectorView(env, args.include_actions)];
+  if (!env.OAUTH_DB) return { connectors };
+
   const db = getDb(env);
   await ensureConnectorSchema(env);
   const rows = await db.prepare("SELECT * FROM connectors WHERE enabled = 1 ORDER BY connector_id").all<ConnectorRow>();
-  const connectors: JsonObject[] = [];
   for (const row of rows.results || []) {
     const item: JsonObject = publicConnector(row);
     if (args.include_actions) item.actions = await listActionsForConnector(env, db, row.connector_id);
@@ -266,9 +275,15 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
 }
 
 export async function deleteConnector(env: Env, args: z.infer<z.ZodObject<typeof connectorIdSchema>>) {
+  const connectorId = normalizeKey(args.connector_id);
+  if (isNativeConnectorId(connectorId)) {
+    throw new Error(biInline(
+      "The virtual native connector cannot be deleted.",
+      "Віртуальний native connector не можна видалити.",
+    ));
+  }
   const db = getDb(env);
   await ensureConnectorSchema(env);
-  const connectorId = normalizeKey(args.connector_id);
   await db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId).run();
   await db.prepare("DELETE FROM connectors WHERE connector_id = ?").bind(connectorId).run();
   await audit(db, connectorId, null, "delete_connector", true, "Deleted connector");
@@ -276,10 +291,20 @@ export async function deleteConnector(env: Env, args: z.infer<z.ZodObject<typeof
 }
 
 export async function testConnector(env: Env, args: z.infer<z.ZodObject<typeof testConnectorSchema>>) {
-  const db = getDb(env);
-  await ensureConnectorSchema(env);
   const connectorId = normalizeKey(args.connector_id);
   const actionName = args.action_name ? normalizeKey(args.action_name) : null;
+  if (isNativeConnectorId(connectorId)) {
+    if (!actionName) return { ok: true, connector: nativeConnectorView(env, true) };
+    return callNativeTool(env, {
+      action_name: actionName,
+      input: args.input || {},
+      dry_run: args.dry_run ?? true,
+      confirmed: args.confirmed ?? false,
+    });
+  }
+
+  const db = getDb(env);
+  await ensureConnectorSchema(env);
   const actions = await listActionsForConnector(env, db, connectorId);
   if (!actions.length) throw new Error(biInline("Connector not found or has no actions.", "Конектор не знайдено або він не має дій."));
   if (!actionName) return { ok: true, connector_id: connectorId, actions };
@@ -293,10 +318,19 @@ export async function testConnector(env: Env, args: z.infer<z.ZodObject<typeof t
 }
 
 export async function callConnectorTool(env: Env, args: z.infer<z.ZodObject<typeof callConnectorToolSchema>>) {
-  const db = getDb(env);
-  await ensureConnectorSchema(env);
   const connectorId = normalizeKey(args.connector_id);
   const actionName = normalizeKey(args.action_name);
+  if (isNativeConnectorId(connectorId)) {
+    return callNativeTool(env, {
+      action_name: actionName,
+      input: args.input || {},
+      dry_run: args.dry_run || false,
+      confirmed: args.confirmed || false,
+    });
+  }
+
+  const db = getDb(env);
+  await ensureConnectorSchema(env);
   const connector = await db.prepare("SELECT * FROM connectors WHERE connector_id = ? AND enabled = 1").bind(connectorId).first<ConnectorRow>();
   if (!connector) throw new Error(biInline("Connector not found.", "Конектор не знайдено."));
 

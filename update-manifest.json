@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.7.0",
+  "latest_version": "0.7.1",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.7.0 adds data-defined AI agents and teams, proposal-only orchestration plans, preflight USD cost estimates, durable queued runs, progress status, budgets, enable/disable controls, and cooperative cancellation without creating extra Workers or API keys.",
-    "uk": "OneAIWorkers 0.7.0 додає data-defined AI агентів і команди, proposal-only плани оркестрації, попередню оцінку вартості в USD, durable queued runs, статус прогресу, бюджети, enable/disable controls і cooperative cancellation без створення додаткових Workers або API-ключів."
+    "en": "OneAIWorkers 0.7.1 adds a stable native compatibility gateway through the existing list_connectors and call_connector_tool methods. AI and agent capabilities can now be discovered and invoked even when an MCP client keeps an older frozen tool snapshot.",
+    "uk": "OneAIWorkers 0.7.1 додає стабільний native compatibility gateway через уже наявні методи list_connectors і call_connector_tool. AI та агентні можливості тепер можна знаходити й викликати навіть тоді, коли MCP-клієнт зберігає старий frozen snapshot інструментів."
   }
 }

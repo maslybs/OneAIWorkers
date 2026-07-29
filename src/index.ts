@@ -96,7 +96,12 @@ export default {
           ),
           mcp_endpoint: `${baseUrl}/mcp`,
           update_page: `${baseUrl}/update`,
-          recommended_first_tools: ["connector_setup_status", "list_connectors", "test_connector", "call_connector_tool"],
+          stable_gateway: {
+            discovery_tool: "list_connectors",
+            invocation_tool: "call_connector_tool",
+            native_connector_id: "native",
+          },
+          recommended_first_tools: ["connector_setup_status", "list_connectors", "call_connector_tool", "test_connector"],
           connector_engine: {
             storage: "D1",
             supported_http_methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],

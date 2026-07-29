@@ -1,6 +1,6 @@
 # Agents and agent teams
 
-OneAIWorkers 0.7.0 supports data-defined AI agents inside the same Cloudflare Worker. It does not create a new Worker, API token, or code deployment for each agent.
+OneAIWorkers 0.7.1 supports data-defined AI agents inside the same Cloudflare Worker. It does not create a new Worker, API token, or code deployment for each agent.
 
 ## Flow
 
@@ -33,13 +33,41 @@ The value is an estimate, not a billing guarantee. Actual cost depends on real t
 - Inspect or cancel an active run through `agent_run_status` and `agent_run_cancel`.
 - Create, update, delete, run, and cancel operations require explicit confirmation where appropriate.
 
-## Version 0.7.0 limits
+## Version 0.7.1 limits
 
 - Up to 8 agents per team.
 - Up to 3 review rounds.
 - Agents perform AI-only analysis, drafting, review, and synthesis. They do not yet invoke saved connector tools.
 - Cancellation is cooperative: a Workers AI request already in flight cannot be interrupted, but the next step will not start.
 - Registry, queue, progress, budgets, and results are stored in the SQLite-backed `AgentManager` Durable Object.
+
+## Clients with a cached tool list
+
+Some MCP clients keep a frozen snapshot of top-level tools and do not expose new `agent_*` actions after the Worker is updated. OneAIWorkers supports two stable methods for those clients:
+
+1. Call `list_connectors` with `include_actions: true`.
+2. Find the virtual connector with `connector_id: native`.
+3. Select the required action and its `input_schema`.
+4. Call `call_connector_tool` with `connector_id: native` and the action name.
+
+Example proposal without creating agents or consuming AI:
+
+```json
+{
+  "connector_id": "native",
+  "action_name": "agent_team_propose",
+  "input": {
+    "task": "Review the application architecture",
+    "max_agents": 4,
+    "priority": "balanced",
+    "max_rounds": 1
+  },
+  "dry_run": false,
+  "confirmed": false
+}
+```
+
+AI inference, creation, updates, deletion, execution, and cancellation use the outer `confirmed: true` field. `dry_run: true` only validates the input and executes nothing.
 
 ## Tools
 

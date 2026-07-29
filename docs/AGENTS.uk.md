@@ -1,6 +1,6 @@
 # Агенти та команди агентів
 
-OneAIWorkers 0.7.0 підтримує data-defined AI агентів у тому самому Cloudflare Worker. Для кожного агента не створюється новий Worker, API token або окремий код.
+OneAIWorkers 0.7.1 підтримує data-defined AI агентів у тому самому Cloudflare Worker. Для кожного агента не створюється новий Worker, API token або окремий код.
 
 ## Як це працює
 
@@ -38,13 +38,41 @@ OneAIWorkers 0.7.0 підтримує data-defined AI агентів у тому
 - Активний run контролюється через `agent_run_status` і `agent_run_cancel`.
 - Видалення агента або команди завжди потребує explicit confirmation.
 
-## Обмеження 0.7.0
+## Обмеження 0.7.1
 
 - Максимум 8 агентів у команді.
 - Максимум 3 rounds.
 - Agents виконують AI-only analysis/drafting/review. Вони ще не викликають saved connector tools.
 - Cancellation є cooperative: AI request, що вже виконується, не можна перервати, але наступний step не почнеться.
 - Черга, progress і results зберігаються в SQLite-backed Durable Object `AgentManager`.
+
+## Клієнти із закешованим списком tools
+
+Деякі MCP-клієнти зберігають snapshot top-level tools і не показують нові `agent_*` actions після оновлення Worker. Для таких клієнтів OneAIWorkers використовує два стабільні methods, які не потрібно змінювати між релізами:
+
+1. Викличте `list_connectors` з `include_actions: true`.
+2. Знайдіть віртуальний connector з `connector_id: native`.
+3. Виберіть потрібну action та її `input_schema`.
+4. Викличте `call_connector_tool` з `connector_id: native` і назвою action.
+
+Приклад proposal без створення агентів і без AI-витрат:
+
+```json
+{
+  "connector_id": "native",
+  "action_name": "agent_team_propose",
+  "input": {
+    "task": "Проаналізувати архітектуру застосунку",
+    "max_agents": 4,
+    "priority": "balanced",
+    "max_rounds": 1
+  },
+  "dry_run": false,
+  "confirmed": false
+}
+```
+
+Для AI inference, створення, зміни, видалення, запуску або cancellation використовується зовнішнє поле `confirmed: true`. `dry_run: true` лише перевіряє input і нічого не запускає.
 
 ## Основні tools
 
