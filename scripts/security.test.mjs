@@ -14,6 +14,7 @@ await build({
     security: path.join(root, "src", "security.ts"),
     connectorResponse: path.join(root, "src", "tools", "connectors", "response.ts"),
     connectorTemplates: path.join(root, "src", "tools", "connectors", "templates.ts"),
+    response: path.join(root, "src", "response.ts"),
   },
   bundle: true,
   format: "esm",
@@ -24,6 +25,7 @@ await build({
 const security = await import(pathToFileURL(path.join(outputDirectory, "security.js")));
 const connectorResponse = await import(pathToFileURL(path.join(outputDirectory, "connectorResponse.js")));
 const connectorTemplates = await import(pathToFileURL(path.join(outputDirectory, "connectorTemplates.js")));
+const responseHelpers = await import(pathToFileURL(path.join(outputDirectory, "response.js")));
 
 test.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
 
@@ -111,4 +113,28 @@ test("redirects are rechecked before a request follows them", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("update notices lead with a browser link in text and structured content", () => {
+  const updateUrl = "https://worker.example/update";
+  const result = responseHelpers.mcpText({
+    ok: true,
+    data: { result: "regular tool output" },
+    update: {
+      available: true,
+      current_version: "0.6.1",
+      latest_version: "0.6.2",
+      critical: false,
+      update_url: updateUrl,
+      message: { en: "Update available.", uk: "Доступне оновлення." },
+    },
+  });
+
+  const text = result.content[0].text;
+  assert.ok(text.startsWith("UPDATE AVAILABLE / ДОСТУПНЕ ОНОВЛЕННЯ"));
+  assert.ok(text.indexOf(updateUrl) < text.indexOf("regular tool output"));
+  assert.equal(result.structuredContent.user_action_required, true);
+  assert.equal(result.structuredContent.update_url, updateUrl);
+  assert.equal(result.structuredContent.open_update_url_in_browser, true);
+  assert.equal(result.structuredContent.do_not_fetch_update_url_from_a_tool, true);
 });
