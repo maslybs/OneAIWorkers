@@ -2,501 +2,143 @@
 
 [English version](README.md)
 
-Для звичайних користувачів основний спосіб — [встановлювач OneAIWorkers](https://workers.bgdn.dev/?lang=uk). Користувач входить лише в Cloudflare і натискає **Встановити**.
-
 **[Встановити OneAIWorkers](https://workers.bgdn.dev/?lang=uk)**
 
-Додатковий спосіб для розробників:
+OneAIWorkers дає ChatGPT та іншим MCP-клієнтам доступ до ваших API й інструментів. При цьому ключі залишаються у вашому обліковому записі Cloudflare.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers)
-
-OneAIWorkers дає вашому AI-помічнику безпечні “руки”.
-
-AI-помічник може читати, думати, памʼятати, планувати й вирішувати. OneAIWorkers дає йому безпечний спосіб робити реальні дії: перевірити сайт, прочитати RSS, надіслати повідомлення в Telegram, викликати webhook, підключитися до API або створити окремий Worker для спеціальної задачі.
-
-Ви підключаєте один MCP URL до ChatGPT або іншого MCP-клієнта. За цим одним URL OneAIWorkers може показувати багато інструментів і конекторів.
-
-Коли зʼявляється нова версія, OneAIWorkers додає до MCP-відповіді повідомлення з посиланням на сторінку оновлення саме вашого Worker: `/update`. Докладніше: [оновлення OneAIWorkers](docs/UPDATES.uk.md).
+Ви встановлюєте один Worker, підключаєте одну адресу `/mcp`, а потім додаєте потрібні конектори. Конектор може читати дані з API, надсилати запити, працювати з n8n або CRM та виконувати інші дозволені дії.
 
 ```text
-AI-помічник → OneAIWorkers MCP → ваші інструменти, API, webhooks і child Workers
+ChatGPT → ваш OneAIWorkers → ваші конектори й API
 ```
 
-## Коли це корисно
+## Чому це зручно
 
-OneAIWorkers корисний, коли ви хочете, щоб AI-помічник робив невеликі реальні задачі, але без прямого доступу до всього підряд.
+- Для звичайного встановлення не потрібен GitHub.
+- Worker і база D1 належать користувачу.
+- Встановлювач сам створює приватний секрет доступу.
+- Ключі API залишаються в Cloudflare Secrets і не записуються в налаштування конектора.
+- Дії конекторів з’являються у ChatGPT як звичайні інструменти, наприклад `n8n_list_workflows`.
+- Оновлення зберігає базу, конектори й секрети.
 
-Приклади:
+## Встановлення
+
+1. Відкрийте [workers.bgdn.dev](https://workers.bgdn.dev/?lang=uk).
+2. Увійдіть у Cloudflare.
+3. Виберіть обліковий запис Cloudflare, куди треба встановити Worker.
+4. Вкажіть назву й натисніть **Встановити OneAIWorkers**.
+5. Збережіть адресу `/mcp` і секрет доступу з останньої сторінки.
+
+Секрет показується лише один раз. Збережіть його в менеджері паролів або іншому приватному місці.
+
+Встановлювач автоматично створює:
+
+- Worker OneAIWorkers;
+- базу D1 для OAuth і налаштувань конекторів;
+- `MCP_SHARED_SECRET` для приватного доступу.
+
+## Підключення до ChatGPT
+
+Додайте власний MCP-застосунок у ChatGPT і вкажіть:
 
 ```text
-Перевіряй мій сайт щоранку і напиши в Telegram, якщо він не працює.
+Авторизація: OAuth
+Адреса сервера: https://ВАШ-WORKER.ВАШ-ПІДДОМЕН.workers.dev/mcp
 ```
+
+Коли відкриється сторінка входу, введіть секрет, який ви зберегли під час встановлення.
+
+Після підключення напишіть ChatGPT:
 
 ```text
-Читай цю RSS-стрічку і надсилай мені тільки важливі новини.
+Перевір налаштування моїх конекторів OneAIWorkers.
 ```
+
+ChatGPT має використати `connector_setup_status`. Ця дія перевіряє базу, збережені конектори, створені інструменти та назви відсутніх секретів. Значення секретів вона не показує.
+
+## Створення конектора
+
+Конектор зберігає адресу API, доступні дії та **назву** потрібного секрету Cloudflare. Значення секрету в конекторі не зберігається.
+
+Наприклад, для підключення n8n:
+
+1. Додайте справжній ключ n8n до Worker як секрет Cloudflare з назвою `N8N_API_KEY`.
+2. Попросіть ChatGPT створити конектор n8n лише для читання.
+3. Попросіть спочатку зробити пробну перевірку без справжнього запиту.
+4. Оновіть або перепідключіть MCP-застосунок, щоб нові дії з’явилися у переліку інструментів.
+
+ChatGPT зберігає конектор через `save_connector`. OneAIWorkers записує його в D1. Справжній ключ API залишається в Cloudflare Secrets.
+
+Приклад запиту:
 
 ```text
-Коли я попрошу, створи ліда в моїй CRM через її API.
+Створи конектор n8n лише для читання для адреси https://example.com/api/v1.
+Використай заголовок X-N8N-API-KEY і секрет Cloudflare з назвою N8N_API_KEY.
+Додай дії для перегляду процесів і виконань.
+Спочатку зроби пробну перевірку без справжнього запиту.
 ```
+
+Докладні поля конектора та способи авторизації описані на сторінці [Інструменти](docs/TOOLS.uk.md).
+
+## Захист доступу
+
+Самої адреси Worker недостатньо, щоб користуватися його MCP-інструментами.
+
+Звичайний встановлювач захищає доступ через OAuth і `MCP_SHARED_SECRET`. Людина без секрету не зможе підключитися до `/mcp` або викликати збережені конектори. Деякі службові сторінки, наприклад сторінка оновлення або відомості OAuth, можуть відкриватися без секрету. Вони не показують секрети й не дають доступу до конекторів.
+
+Дотримуйтесь простих правил:
+
+- не додавайте секрет до адреси;
+- не записуйте справжній ключ API у налаштування конектора;
+- зберігайте ключі лише в Cloudflare Secrets;
+- замініть секрет доступу, якщо він міг потрапити до сторонньої людини.
+
+Докладніше: [Безпека](docs/SECURITY.uk.md).
+
+## Оновлення
+
+Коли доступне оновлення, MCP-відповідь спочатку показує пряме посилання:
 
 ```text
-Надішли webhook у Make, Zapier або n8n, коли клієнт заповнить форму.
+https://ВАШ-WORKER.ВАШ-ПІДДОМЕН.workers.dev/update
 ```
 
-```text
-Створи невеликий Worker, який парсить сторінку і повертає чисті дані.
-```
+Відкрийте його у звичайному браузері. Не перевіряйте сторінку оновлення через `fetch_url` або інший серверний інструмент.
 
-```text
-Створи простого бота або API-міст як окремий child Worker.
-```
+Під час оновлення ви входите в Cloudflare, а система перевіряє, що Worker належить вашому обліковому запису. Замінюється лише код Worker. Дані D1, конектори та Cloudflare Secrets зберігаються.
 
-Ідея не в тому, щоб замінити AI-помічника. Ідея в тому, щоб дати йому безпечний шар для дій.
+Докладніше: [Оновлення](docs/UPDATES.uk.md).
 
-## Як це працює
-
-OneAIWorkers має два режими.
-
-### 1. Базовий режим
-
-Це основний режим. Він працює після встановлення через простий встановлювач або стару кнопку розгортання.
-
-Основний Worker зберігає налаштування конекторів у D1 і сам виконує API-запити.
-
-Використовуйте це для:
-
-```text
-REST API
-CRM
-платіжних систем
-webhooks
-повідомлень у Telegram, Discord, Slack
-простих внутрішніх інструментів
-Make, Zapier, n8n
-```
-
-AI не має знати ваші справжні API-ключі. Він знає тільки назву secret.
-
-Приклад:
-
-```text
-Назва secret: CRM_API_TOKEN
-Справжнє значення: сховане в Cloudflare Secrets
-```
-
-Конектор може мати таке налаштування:
-
-```json
-{
-  "auth": {
-    "type": "bearer_secret",
-    "secret_name": "CRM_API_TOKEN"
-  }
-}
-```
-
-OneAIWorkers читає справжній secret тільки тоді, коли робить API-запит.
-
-### 2. Розширений режим: Worker Builder
-
-Цей режим потрібен для спеціальних випадків.
-
-Основний Worker може створити окремий child Worker через Cloudflare API. Це корисно, якщо конектору потрібен власний код, власний публічний endpoint, логіка бота, парсер або нестандартна поведінка.
-
-Використовуйте це для:
-
-```text
-кастомних ботів
-кастомних парсерів
-окремих webhook-приймачів
-API-мостів зі складною логікою
-інструментів, які краще ізолювати від основного Worker
-```
-
-Для цього режиму потрібні:
-
-```text
-CF_ACCOUNT_ID
-CF_API_TOKEN
-CF_WORKERS_DEV_SUBDOMAIN опційно
-```
-
-Вони не потрібні для першого запуску. Додавайте їх тільки тоді, коли хочете, щоб OneAIWorkers створював додаткові Workers.
-
-Кастомний код треба переглянути перед розгортанням. OneAIWorkers блокує деякі небезпечні JavaScript-патерни, але це не повна перевірка безпеки. Worker Builder — це розширена можливість.
-
-## Що створюється під час встановлення
-
-Простий встановлювач розгортає основний Worker, створює D1 і секрет доступу автоматично.
-
-Cloudflare також може створити D1 базу з `wrangler.toml`.
-
-D1 база використовується для:
-
-```text
-OAuth-клієнтів
-OAuth-токенів
-реєстру конекторів
-дій конекторів
-записів аудиту
-```
-
-Вона не використовується як памʼять AI. Памʼять і розклад тримає ваш AI-помічник. OneAIWorkers зберігає тільки налаштування, потрібні для роботи.
-
-## Швидкий старт
-
-### Крок 1. Розгорніть
-
-Відкрийте сторінку встановлювача, яку опублікував власник OneAIWorkers. Увійдіть у Cloudflare, виберіть обліковий запис і натисніть **Встановити**.
-
-GitHub не потрібен. Встановлювач сам створить D1 і `MCP_SHARED_SECRET`. Після завершення він покаже адресу `/mcp` та секрет. Збережіть секрет одразу: повторно він не показується.
-
-Після deploy використовуйте `connector_setup_status`, щоб бачити реальний стан D1, збережених конекторів, налаштованих secrets і відсутніх secrets. Він показує тільки назви secrets; значення залишаються прихованими.
-
-Після deploy додайте тільки ті додаткові secrets, які вам реально потрібні, у Cloudflare:
-
-```text
-Cloudflare dashboard
-→ Workers & Pages
-→ ваш OneAIWorkers Worker
-→ Settings
-→ Variables and Secrets
-→ Add Secret
-```
-
-Опційні secrets, які можна додати пізніше:
-
-```text
-TELEGRAM_BOT_TOKEN
-TELEGRAM_CHAT_ID
-DISCORD_WEBHOOK_URL
-SLACK_WEBHOOK_URL
-DEFAULT_WEBHOOK_URL
-CF_ACCOUNT_ID
-CF_API_TOKEN
-CF_WORKERS_DEV_SUBDOMAIN
-PUBLIC_BASE_URL
-```
-
-### Крок 2. Додайте спільний секрет
-
-Це рекомендовано.
-
-`MCP_SHARED_SECRET` — це приватний пароль. OneAIWorkers просить його під час OAuth-підключення. Для ручного доступу передавайте його лише в заголовку `Authorization: Bearer`.
-
-Використовуйте довге випадкове значення.
-
-Його можна додати під час розгортання або пізніше в Cloudflare:
-
-```text
-Cloudflare dashboard
-→ Workers & Pages
-→ ваш OneAIWorkers Worker
-→ Settings
-→ Variables and Secrets
-→ Add Secret
-```
-
-### Крок 3. Підключіть ChatGPT
-
-У ChatGPT Developer Mode додайте custom MCP app.
-
-Використовуйте:
-
-```text
-Authentication: OAuth
-Server URL: https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
-```
-
-Секрети в адресі, як-от `?key=`, не приймаються.
-
-Коли ChatGPT відкриє сторінку підключення, введіть `MCP_SHARED_SECRET`, якщо ви його задали.
-
-### Крок 4. Перевірте стан
-
-Після підключення напишіть:
-
-```text
-Show OneAIWorkers status.
-```
-
-AI має викликати `hub_info` і показати, що вже налаштовано.
-
-## Вбудовані інструменти
-
-OneAIWorkers має такі інструменти:
+## Основні інструменти
 
 ```text
 hub_info
+connector_setup_status
+save_connector
+list_connectors
+test_connector
+call_connector_tool
+delete_connector
 fetch_url
 fetch_many_urls
 fetch_rss
 check_url_status
 send_notification
 call_webhook
-save_connector
-list_connectors
-test_connector
-call_connector_tool
-delete_connector
-create_child_worker_from_template
-deploy_custom_child_worker
 ```
 
-## Приклад базового конектора
+Збережені дії конекторів також з’являються як окремі інструменти. Для звичайної роботи краще використовувати їх, а не `call_connector_tool`.
 
-Уявімо, що у вас є CRM API.
+## Додаткові можливості
 
-Документація CRM каже:
+OneAIWorkers може створювати захищені дочірні Workers для задач, яким потрібен власний код або нестандартна логіка. Це необов’язкова можливість із додатковими дозволами Cloudflare. Для більшості API достатньо звичайного конектора.
 
-```text
-POST https://api.example-crm.com/v1/leads
-Authorization: Bearer YOUR_API_TOKEN
-Body: { "name": "...", "email": "..." }
-```
+Додаткові сторінки:
 
-Спочатку додайте справжній API token у Cloudflare Secrets:
-
-```text
-CRM_API_TOKEN = справжній token з CRM
-```
-
-Потім скажіть AI-помічнику:
-
-```text
-Створи OneAIWorkers конектор crm.
-У ньому має бути дія create_lead.
-Використай POST https://api.example-crm.com/v1/leads.
-Авторизація: bearer_secret з secret_name CRM_API_TOKEN.
-Поля body: name і email.
-```
-
-AI може створити цей конектор через `save_connector`.
-
-### Підтримувана авторизація конекторів
-
-Connector manifests підтримують такі auth types:
-
-```text
-none
-bearer_secret
-auth_header_secret
-api_key_header_secret
-api_key_query_secret
-basic_secret
-basic_secret_pair
-oauth2_client_credentials
-oauth2_refresh_token
-google_oauth2_refresh_token
-```
-
-Використовуйте `basic_secret_pair`, коли і login/username, і password/key мають бути тільки в Cloudflare Secrets. Це корисно для API на кшталт DataForSEO:
-
-```json
-{
-  "type": "basic_secret_pair",
-  "username_secret_name": "DATAFORSEO_API_LOGIN",
-  "password_secret_name": "DATAFORSEO_API_PASSWORD"
-}
-```
-
-Використовуйте `oauth2_refresh_token` для API, де у вас уже є refresh token:
-
-```json
-{
-  "type": "oauth2_refresh_token",
-  "token_url": "https://api.example.com/oauth/token",
-  "client_id_secret_name": "EXAMPLE_CLIENT_ID",
-  "client_secret_secret_name": "EXAMPLE_CLIENT_SECRET",
-  "refresh_token_secret_name": "EXAMPLE_REFRESH_TOKEN"
-}
-```
-
-Використовуйте `google_oauth2_refresh_token` для Google APIs після того, як створите OAuth credentials і збережете refresh token у Cloudflare Secrets:
-
-```json
-{
-  "type": "google_oauth2_refresh_token",
-  "client_id_secret_name": "GOOGLE_CLIENT_ID",
-  "client_secret_secret_name": "GOOGLE_CLIENT_SECRET",
-  "refresh_token_secret_name": "GOOGLE_REFRESH_TOKEN"
-}
-```
-
-У цій версії ще немає вбудованої Google connection page. Наразі Google OAuth значення додаються як Cloudflare Secrets. Пізніше можна додати `/connect/google` сторінку і зберігати зашифровані tokens у D1.
-
-Після цього можна сказати:
-
-```text
-Створи CRM ліда Anna Smith, anna@example.com.
-```
-
-AI викличе:
-
-```text
-call_connector_tool
-connector_id: crm
-action_name: create_lead
-input: { name: "Anna Smith", email: "anna@example.com" }
-```
-
-OneAIWorkers надішле запит у CRM. Справжній API token залишиться схованим у Cloudflare Secrets.
-
-## Приклад child Worker
-
-Використовуйте child Workers тільки тоді, коли простого API-конектора недостатньо.
-
-Приклади задач:
-
-```text
-Зроби невеликий парсер, який читає сторінку і повертає чисті дані про товари.
-```
-
-```text
-Зроби webhook-приймач, який перевіряє підпис і потім викликає інший API.
-```
-
-```text
-Зроби простий endpoint для бота з кастомною логікою.
-```
-
-Щоб увімкнути цей режим, додайте до основного Worker:
-
-```text
-CF_ACCOUNT_ID
-CF_API_TOKEN
-CF_WORKERS_DEV_SUBDOMAIN опційно
-```
-
-Потім скажіть AI:
-
-```text
-Створи child Worker для цього парсера.
-Покажи мені код і поясни, що він робить, перед розгортанням.
-```
-
-Після перевірки AI може викликати `deploy_custom_child_worker`.
-
-Child Worker має такі адреси:
-
-```text
-/health
-/tools/list
-/tools/call
-```
-
-Потім збережіть його як конектор через `save_connector` з такими полями:
-
-```text
-mode: child_worker
-child_worker_url: https://child-worker.your-subdomain.workers.dev
-child_worker_token_secret: CHILD_WORKER_TOKEN
-```
-
-Child token показується один раз після розгортання. Збережіть його як Cloudflare Secret, наприклад:
-
-```text
-CHILD_WORKER_TOKEN
-```
-
-Після цього основний Worker зможе передавати виклики в child Worker.
-
-## Повідомлення
-
-Telegram потребує:
-
-```text
-TELEGRAM_BOT_TOKEN
-TELEGRAM_CHAT_ID
-```
-
-Discord потребує:
-
-```text
-DISCORD_WEBHOOK_URL
-```
-
-Slack потребує:
-
-```text
-SLACK_WEBHOOK_URL
-```
-
-Generic webhook потребує:
-
-```text
-DEFAULT_WEBHOOK_URL
-```
-
-Ці значення можна додати під час розгортання або пізніше в Cloudflare settings.
-
-## Модель безпеки
-
-OneAIWorkers дотримується простих правил:
-
-```text
-Secrets залишаються в Cloudflare Secrets.
-AI бачить назви secrets, а не їхні значення.
-Дозволені тільки HTTPS URL.
-Локальні й приватні мережеві адреси заблоковані.
-Дії конекторів зберігаються в D1.
-Записи OAuth і хеші токенів зберігаються в D1.
-Child Workers опційні.
-Кастомний код child Worker треба переглянути перед розгортанням.
-```
-
-Для простого API використовуйте базові конектори.
-
-Для нестандартної логіки використовуйте child Workers.
-
-## Локальна розробка
-
-```bash
-npm install
-npm run dev
-```
-
-Для локальних secrets скопіюйте:
-
-```bash
-cp .dev.vars.example .dev.vars
-```
-
-Потім заповніть тільки потрібні значення.
-
-Перевірка типів:
-
-```bash
-npm run typecheck
-```
-
-Ручне розгортання:
-
-```bash
-npm run deploy
-```
-
-## Рекомендоване перше налаштування
-
-Почніть з цього:
-
-```text
-MCP_SHARED_SECRET
-```
-
-Потім підключіть ChatGPT через OAuth.
-
-Додавайте інтеграції тільки тоді, коли вони потрібні:
-
-```text
-Telegram повідомлення → TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
-Discord повідомлення → DISCORD_WEBHOOK_URL
-Slack повідомлення → SLACK_WEBHOOK_URL
-Make/Zapier/n8n → DEFAULT_WEBHOOK_URL або збережений конектор
-Кастомний API → додайте API secret, потім створіть конектор
-Кастомний код → увімкніть Worker Builder
-```
+- [Дочірні Workers](docs/CHILD_WORKERS.uk.md)
+- [Ручне встановлення](docs/INSTALL.uk.md)
+- [Встановлення через Git для розробників](docs/DEPLOY_TO_CLOUDFLARE.uk.md)
+- [Приклади запитів](docs/PROMPTS.uk.md)
 
 ## Ліцензія
 

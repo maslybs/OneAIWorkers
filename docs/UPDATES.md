@@ -1,17 +1,39 @@
 # OneAIWorkers updates
 
-Every installed OneAIWorkers instance has its own update page:
+[Українська версія](UPDATES.uk.md)
+
+Every installed OneAIWorkers has its own update page:
 
 ```text
-https://YOUR-WORKER/update
+https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/update
 ```
 
-When the official update manifest contains a newer version, OneAIWorkers appends the current version, latest version, critical flag, and the installed Worker's `/update` link to MCP tool results. This lets ChatGPT or another MCP client tell the user that an update is available during normal use.
+## What the user sees
 
-MCP cannot show a notification while the client is not using the Worker. The check runs during a tool call or when `/update` is opened.
+OneAIWorkers checks for updates while an MCP tool is being used. If a newer version is available, the response shows the direct update link before the normal tool result.
 
-The update link never contains keys, tokens, or secrets. The `/update` page runs on the user's Worker. Cloudflare authorization begins only after the user presses the update button.
+Open this link in a normal browser. Do not call it through `fetch_url` or another server-side tool. A server-side request may fail even when the page works correctly in the user's browser.
 
-The central service at [workers.bgdn.dev](https://workers.bgdn.dev) verifies ownership for `workers.dev` addresses and requires the `OAUTH_DB` and `MCP_SHARED_SECRET` bindings. Cloudflare inherits all existing bindings during the code upload, so secret values are neither read nor sent to the installer. The installer is maintained in a separate private project.
+MCP cannot show a notification while the client is not using the Worker. A successful update check may be cached for up to six hours.
 
-See [UPDATES.uk.md](UPDATES.uk.md) for configuration and security details.
+## How to update
+
+1. Open the `/update` link in a normal browser.
+2. Sign in to Cloudflare.
+3. Select the account that owns the Worker.
+4. Confirm the update.
+5. Refresh or reconnect the MCP app after the update so it reloads the tool list.
+
+The update service verifies through Cloudflare that the Worker belongs to the selected account. It replaces only the Worker code. Existing D1 data, connector settings, bindings, and Cloudflare Secrets are preserved.
+
+The update link contains no keys, tokens, or secrets.
+
+## Official update source
+
+By default, the Worker checks:
+
+```text
+https://raw.githubusercontent.com/maslybs/OneAIWorkers/main/update-manifest.json
+```
+
+If this file cannot be reached, the normal MCP tools continue to work. Project owners can change the source with `UPDATE_MANIFEST_URL` or disable checks with `UPDATE_CHECK_ENABLED=false`.

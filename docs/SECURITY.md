@@ -15,7 +15,9 @@ OneAIWorkers lets an AI assistant read public pages and call external services. 
 
 ## MCP access
 
-For personal use, set `MCP_SHARED_SECRET`.
+The normal installer creates `MCP_SHARED_SECRET` automatically. If you install manually, create it yourself before connecting an MCP client.
+
+Knowing only the Worker URL does not grant access to `/mcp`. A new OAuth connection must pass the shared-secret check. Public service pages may expose metadata or update information, but they do not expose saved connector data or secret values.
 
 The Worker accepts it in one of these ways:
 
@@ -24,7 +26,7 @@ The Worker accepts it in one of these ways:
 
 Secrets and OAuth access tokens are deliberately rejected in URL query parameters because URLs can appear in logs and browser history.
 
-For public apps, use OAuth or Cloudflare Access.
+For a deliberately public app, design a separate access policy instead of removing protection by accident.
 
 OAuth requires PKCE with `S256`. Access tokens expire after one hour. Clients can request the `offline_access` scope to receive a rotating refresh token. OAuth tokens can be revoked through `/oauth/revoke`.
 
