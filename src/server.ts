@@ -4,6 +4,7 @@ import { bi, bilingualObject, biInline } from "./i18n";
 import type { Env } from "./types";
 import { buildBaseUrl } from "./auth";
 import { errorMessage, mcpText } from "./response";
+import { aiCapabilities, aiCapabilitiesSchema, aiChat, aiChatSchema, aiEmbeddings, aiEmbeddingsSchema, aiExtractJson, aiExtractJsonSchema, aiModelsList, aiModelsListSchema, aiRecommendModel, aiRecommendModelSchema, aiRun, aiRunSchema } from "./tools/ai";
 import { redactSensitiveText, redactSensitiveValue } from "./security";
 import { checkUrlStatus, checkUrlStatusSchema, fetchManyUrls, fetchManyUrlsSchema, fetchRss, fetchRssSchema, fetchUrl, fetchUrlSchema } from "./tools/observe";
 import { callWebhook, callWebhookSchema, sendNotification, sendNotificationSchema } from "./tools/notify";
@@ -31,6 +32,13 @@ const STATIC_TOOL_NAMES = [
   "fetch_many_urls",
   "fetch_rss",
   "check_url_status",
+  "ai_capabilities",
+  "ai_models_list",
+  "ai_recommend_model",
+  "ai_chat",
+  "ai_embeddings",
+  "ai_extract_json",
+  "ai_run",
   "send_notification",
   "call_webhook",
   "create_child_worker_from_template",
@@ -119,6 +127,14 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
   tool(server, "fetch_many_urls", "Fetch many URLs", bi("Fetches up to 10 public HTTPS URLs and returns compact results. Use for lightweight research or status checks, not crawling.", "Отримує до 10 публічних HTTPS URL і повертає компактні результати. Використовуйте для легкого research або status checks, не для crawling."), fetchManyUrlsSchema, fetchManyUrls, READ_EXTERNAL);
   tool(server, "fetch_rss", "Fetch RSS feed", bi("Fetches an RSS/Atom feed and returns recent feed items in a model-readable format.", "Отримує RSS/Atom feed і повертає останні елементи у форматі, зручному для моделі."), fetchRssSchema, fetchRss, READ_EXTERNAL);
   tool(server, "check_url_status", "Check URL status", bi("Checks whether a public website or API endpoint is reachable and how long the request took.", "Перевіряє, чи доступний публічний сайт або API endpoint і скільки часу зайняв запит."), checkUrlStatusSchema, checkUrlStatus, READ_EXTERNAL);
+
+  tool(server, "ai_capabilities", "Workers AI capabilities", bi("Shows whether the native Workers AI binding is configured, plus curated profiles and safety limits.", "Показує, чи налаштований native Workers AI binding, а також curated профілі та safety limits."), aiCapabilitiesSchema, () => aiCapabilities(env), READ_ONLY);
+  tool(server, "ai_models_list", "List curated Workers AI models", bi("Lists the curated Workers AI models, exact model metadata, pricing snapshots and stable profiles shipped with this OneAIWorkers version. This is not a live Cloudflare catalog.", "Показує curated моделі Workers AI, точні metadata моделей, snapshot цін і стабільні профілі, що постачаються з цією версією OneAIWorkers. Це не live-каталог Cloudflare."), aiModelsListSchema, aiModelsList, READ_ONLY);
+  tool(server, "ai_recommend_model", "Recommend a Workers AI model", bi("Deterministically recommends a curated model from workload, cost, latency, quality, context and capability requirements. It does not invoke or bill an AI model.", "Детерміновано рекомендує curated модель за задачею, ціною, latency, якістю, context і потрібними capabilities. Цей tool не викликає і не тарифікує AI-модель."), aiRecommendModelSchema, aiRecommendModel, READ_ONLY);
+  tool(server, "ai_chat", "Run Workers AI chat", bi("Runs a non-streaming text chat through the native Workers AI binding with input and output limits and reports the exact selected model.", "Запускає non-streaming text chat через native Workers AI binding з лімітами input/output і повертає точну обрану модель."), aiChatSchema, (args) => aiChat(env, args), READ_EXTERNAL);
+  tool(server, "ai_embeddings", "Create Workers AI embeddings", bi("Creates text embeddings through the native Workers AI binding using a curated multilingual model by default and reports the exact selected model.", "Створює text embeddings через native Workers AI binding, за замовчуванням використовуючи curated multilingual модель, і повертає точну обрану модель."), aiEmbeddingsSchema, (args) => aiEmbeddings(env, args), READ_EXTERNAL);
+  tool(server, "ai_extract_json", "Extract structured JSON with Workers AI", bi("Uses an active structured-output model to extract an object according to a supplied JSON Schema and reports the exact selected model.", "Використовує активну structured-output модель для extraction об'єкта за переданою JSON Schema і повертає точну обрану модель."), aiExtractJsonSchema, (args) => aiExtractJson(env, args), READ_EXTERNAL);
+  tool(server, "ai_run", "Run advanced Workers AI request", bi("Runs an advanced non-streaming Workers AI request. Only @cf/ models are accepted; unlisted models require explicit opt-in. This operation may consume Workers AI quota.", "Запускає advanced non-streaming Workers AI request. Дозволені лише @cf/ моделі; unlisted моделі потребують явного opt-in. Операція може використовувати квоту Workers AI."), aiRunSchema, (args) => aiRun(env, args), READ_EXTERNAL);
 
   tool(server, "send_notification", "Send notification", bi("Sends a message through configured Telegram, Discord, Slack, or generic webhook integration. This creates an external side effect.", "Надсилає повідомлення через налаштований Telegram, Discord, Slack або generic webhook. Це створює зовнішній side effect."), sendNotificationSchema, (args) => sendNotification(env, args), WRITE_EXTERNAL);
   tool(server, "call_webhook", "Call webhook", bi("Calls a public HTTPS webhook with a JSON payload. Use for user-approved automation callbacks only.", "Викликає публічний HTTPS webhook з JSON payload. Використовуйте тільки для підтверджених користувачем automation callbacks."), callWebhookSchema, callWebhook, WRITE_EXTERNAL);
@@ -294,6 +310,7 @@ function configuredFlags(env: Env) {
     discord: Boolean(env.DISCORD_WEBHOOK_URL),
     slack: Boolean(env.SLACK_WEBHOOK_URL),
     default_webhook: Boolean(env.DEFAULT_WEBHOOK_URL),
+    workers_ai: Boolean(env.AI),
     worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
   };
 }

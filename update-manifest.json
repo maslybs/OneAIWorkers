@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.6.3",
+  "latest_version": "0.6.4",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers now includes clear setup guidance for ChatGPT, Claude, and other MCP-compatible clients. Open update_url in a normal browser.",
-    "uk": "OneAIWorkers тепер має зрозумілі інструкції для ChatGPT, Claude та інших MCP-сумісних клієнтів. Відкрийте update_url у звичайному браузері."
+    "en": "OneAIWorkers 0.6.4 adds native Cloudflare Workers AI tools, curated model profiles, transparent model metadata and deterministic model recommendations.",
+    "uk": "OneAIWorkers 0.6.4 додає нативні інструменти Cloudflare Workers AI, керовані профілі моделей, прозорі metadata моделей і детерміновані рекомендації моделі."
   }
 }

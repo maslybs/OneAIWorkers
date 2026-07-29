@@ -6,6 +6,10 @@ compatibility_date = "2026-06-27"
 keep_vars = true
 compatibility_flags = ["nodejs_compat"]
 
+# Native Workers AI binding. No API token or Account ID is required at runtime.
+[ai]
+binding = "AI"
+
 # D1 is used for OAuth, connector registry, connector actions, and audit records.
 [[d1_databases]]
 binding = "OAUTH_DB"

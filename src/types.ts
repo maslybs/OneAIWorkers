@@ -1,3 +1,7 @@
+export interface WorkersAiBinding {
+  run(model: string, inputs: Record<string, unknown>, options?: Record<string, unknown>): Promise<unknown>;
+}
+
 export interface Env {
   [key: string]: unknown;
 
@@ -10,6 +14,9 @@ export interface Env {
 
   // D1 database used for OAuth, connector registry, and audit records.
   OAUTH_DB?: D1Database;
+
+  // Native Cloudflare Workers AI binding configured as [ai] binding = "AI".
+  AI?: WorkersAiBinding;
 
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
