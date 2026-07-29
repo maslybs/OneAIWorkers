@@ -28,9 +28,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Lockfiles are intentionally ignored for this starter template.
-# Remove these lines if you want reproducible app-level installs.
-package-lock.json
+# Keep npm installs reproducible across local builds, Git and Cloudflare.
 pnpm-lock.yaml
 yarn.lock
 bun.lockb

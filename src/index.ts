@@ -143,7 +143,7 @@ export default {
       if (url.pathname === "/mcp") {
         if (!(await isMcpAuthorized(request, env))) return unauthorized(request, env);
         const server = await createMcpServer(env, request);
-        return createMcpHandler(server)(request, env, ctx);
+        return createMcpHandler(server, { enableJsonResponse: true })(request, env, ctx);
       }
 
       if (url.pathname === "/robots.txt") {

@@ -216,7 +216,7 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
   const mode = args.mode || "internal";
   if (mode === "child_worker") validateChildWorkerConfig(args.child_worker_url, args.child_worker_binding, args.child_worker_token_secret);
 
-  await db.prepare(
+  const statements: D1PreparedStatement[] = [db.prepare(
     `INSERT INTO connectors (connector_id, name, description, mode, child_worker_url, child_worker_binding, child_worker_token_secret, enabled, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
      ON CONFLICT(connector_id) DO UPDATE SET
@@ -228,13 +228,14 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
        child_worker_token_secret = excluded.child_worker_token_secret,
        enabled = 1,
        updated_at = excluded.updated_at`,
-  ).bind(connectorId, args.name, args.description || null, mode, args.child_worker_url || null, args.child_worker_binding || null, args.child_worker_token_secret || null, now, now).run();
+  ).bind(connectorId, args.name, args.description || null, mode, args.child_worker_url || null, args.child_worker_binding || null, args.child_worker_token_secret || null, now, now)];
+  statements.push(db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId));
+  statements.push(...args.actions.map((action) => prepareConnectorAction(db, connectorId, action, now)));
+  statements.push(db.prepare(
+    "INSERT INTO connector_audit_log (id, connector_id, action_name, event, ok, message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).bind(crypto.randomUUID(), connectorId, null, "save_connector", 1, `Saved ${args.actions.length} actions`, now));
 
-  await db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId).run();
-
-  for (const action of args.actions) await saveConnectorAction(db, connectorId, action, now);
-
-  await audit(db, connectorId, null, "save_connector", true, `Saved ${args.actions.length} actions`);
+  await db.batch(statements);
   return { ok: true, connector_id: connectorId, actions: args.actions.length, mode };
 }
 
@@ -319,13 +320,13 @@ async function findConnectorAction(db: D1Database, connectorId: string, actionNa
   return null;
 }
 
-async function saveConnectorAction(db: D1Database, connectorId: string, action: z.infer<typeof actionSchema>, now: number): Promise<void> {
+function prepareConnectorAction(db: D1Database, connectorId: string, action: z.infer<typeof actionSchema>, now: number): D1PreparedStatement {
   const actionName = normalizeKey(action.name);
   validateTemplatedUrl(action.url);
   validateAuth(action.auth as AuthConfig);
   validateSafeHeaders(action.headers || {});
 
-  await db.prepare(
+  return db.prepare(
     `INSERT INTO connector_actions
      (connector_id, action_name, description, method, url, auth_json, headers_json, query_json, body_template_json, input_schema_json, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -342,7 +343,7 @@ async function saveConnectorAction(db: D1Database, connectorId: string, action: 
     action.input_schema === undefined ? null : JSON.stringify(action.input_schema),
     now,
     now,
-  ).run();
+  );
 }
 
 async function callInternalAction(env: Env, action: ActionRow, input: JsonObject, dryRun: boolean) {
