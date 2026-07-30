@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.8.0",
+  "latest_version": "0.8.1",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.8.0 adds a local Neuron Meter for all Workers AI calls: D1 UTC usage history, per-call billing blocks, expected/max agent-team neuron preflight, reported-token confidence, daily remainder tracking, and Cloudflare error 3036 hard-limit status. The meter covers this deployment only and does not claim account-wide usage.",
-    "uk": "OneAIWorkers 0.8.0 додає локальний Neuron Meter для всіх Workers AI calls: D1 UTC usage history, per-call billing blocks, expected/max neuron preflight для agent teams, confidence за reported tokens, добовий local remainder та статус hard limit за Cloudflare error 3036. Meter охоплює лише цей deployment і не видає локальні дані за account-wide usage."
+    "en": "OneAIWorkers 0.8.1 fixes Neuron Meter D1 schema initialization by executing each complete CREATE statement separately. This resolves the production SQLITE_ERROR incomplete input failure in ai_neuron_status and metered AI calls.",
+    "uk": "OneAIWorkers 0.8.1 виправляє ініціалізацію D1 schema для Neuron Meter: кожен повний CREATE statement тепер виконується окремо. Це усуває production-помилку SQLITE_ERROR incomplete input в ai_neuron_status і metered AI calls."
   }
 }

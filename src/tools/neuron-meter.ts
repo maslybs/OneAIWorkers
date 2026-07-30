@@ -358,34 +358,38 @@ async function safeDailyStatus(env: Env): Promise<Awaited<ReturnType<typeof aiNe
 async function ensureNeuronSchema(env: Env): Promise<void> {
   if (!env.OAUTH_DB) throw new Error("D1 database is not configured for neuron tracking.");
   if (!schemaReady) {
-    schemaReady = env.OAUTH_DB.exec(`
-      CREATE TABLE IF NOT EXISTS ai_neuron_usage (
-        id TEXT PRIMARY KEY,
-        request_id TEXT NOT NULL,
-        run_id TEXT,
-        agent_id TEXT,
-        model TEXT NOT NULL,
-        billing_type TEXT NOT NULL,
-        prompt_tokens INTEGER,
-        completion_tokens INTEGER,
-        cached_tokens INTEGER NOT NULL DEFAULT 0,
-        estimated_cost_usd REAL,
-        estimated_neurons REAL,
-        source TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_ai_neuron_usage_created ON ai_neuron_usage(created_at);
-      CREATE INDEX IF NOT EXISTS idx_ai_neuron_usage_run_created ON ai_neuron_usage(run_id, created_at);
-      CREATE INDEX IF NOT EXISTS idx_ai_neuron_usage_model_created ON ai_neuron_usage(model, created_at);
-      CREATE TABLE IF NOT EXISTS ai_neuron_events (
-        id TEXT PRIMARY KEY,
-        event_type TEXT NOT NULL,
-        code TEXT,
-        message TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_ai_neuron_events_type_created ON ai_neuron_events(event_type, created_at);
-    `).then(() => undefined).catch((error) => {
+    const db = env.OAUTH_DB;
+    schemaReady = (async () => {
+      const statements = [
+        `CREATE TABLE IF NOT EXISTS ai_neuron_usage (
+          id TEXT PRIMARY KEY,
+          request_id TEXT NOT NULL,
+          run_id TEXT,
+          agent_id TEXT,
+          model TEXT NOT NULL,
+          billing_type TEXT NOT NULL,
+          prompt_tokens INTEGER,
+          completion_tokens INTEGER,
+          cached_tokens INTEGER NOT NULL DEFAULT 0,
+          estimated_cost_usd REAL,
+          estimated_neurons REAL,
+          source TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )`,
+        "CREATE INDEX IF NOT EXISTS idx_ai_neuron_usage_created ON ai_neuron_usage(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_neuron_usage_run_created ON ai_neuron_usage(run_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_ai_neuron_usage_model_created ON ai_neuron_usage(model, created_at)",
+        `CREATE TABLE IF NOT EXISTS ai_neuron_events (
+          id TEXT PRIMARY KEY,
+          event_type TEXT NOT NULL,
+          code TEXT,
+          message TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )`,
+        "CREATE INDEX IF NOT EXISTS idx_ai_neuron_events_type_created ON ai_neuron_events(event_type, created_at)",
+      ];
+      for (const statement of statements) await db.prepare(statement).run();
+    })().catch((error) => {
       schemaReady = null;
       throw error;
     });

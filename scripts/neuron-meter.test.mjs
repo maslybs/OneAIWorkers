@@ -72,10 +72,13 @@ test("recognizes Cloudflare daily neuron limit error 3036", () => {
   assert.equal(meter.isDailyNeuronLimitError(new Error("out of capacity 3040")), false);
 });
 
-test("persists a metered call and returns the D1 daily aggregate", async () => {
+test("persists a metered call and returns the D1 daily aggregate without multi-statement D1 exec", async () => {
   const usageRows = [];
+  const schemaStatements = [];
   const db = {
-    exec: async () => ({}),
+    exec: async () => {
+      throw new Error("multi-statement exec must not be used for neuron schema bootstrap");
+    },
     prepare(sql) {
       const statement = {
         values: [],
@@ -84,6 +87,9 @@ test("persists a metered call and returns the D1 daily aggregate", async () => {
           return this;
         },
         async run() {
+          if (sql.startsWith("CREATE TABLE") || sql.startsWith("CREATE INDEX")) {
+            schemaStatements.push(sql);
+          }
           if (sql.includes("INSERT INTO ai_neuron_usage")) {
             usageRows.push({
               neurons: Number(this.values[10] || 0),
@@ -125,6 +131,8 @@ test("persists a metered call and returns the D1 daily aggregate", async () => {
     input: { messages: [{ role: "user", content: "hello" }] },
     pricing: { input: 0.2, output: 0.3 },
   });
+  assert.equal(schemaStatements.length, 6);
+  assert.ok(schemaStatements.every((sql) => !sql.trimEnd().endsWith(";")));
   assert.equal(usageRows.length, 1);
   assert.equal(response.billing.today_psy_neurons, 2.363636);
   assert.equal(response.billing.remaining_neurons, 9_997.636364);
