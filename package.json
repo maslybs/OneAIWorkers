@@ -1,6 +1,6 @@
 {
   "name": "oneaiworkers",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": false,
   "description": "A small Cloudflare Worker remote MCP server for LLM-triggered actions.",
   "type": "module",
@@ -8,11 +8,12 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --keep-vars",
-    "test": "npm run test:security && npm run test:oauth && npm run test:agents && npm run test:native-gateway",
+    "test": "npm run test:security && npm run test:oauth && npm run test:agents && npm run test:native-gateway && npm run test:neuron-meter",
     "test:security": "node --test scripts/security.test.mjs",
     "test:oauth": "node --test scripts/oauth-integration.test.mjs",
     "test:agents": "node --test scripts/agents.test.mjs",
     "test:native-gateway": "node --test scripts/native-gateway.test.mjs",
+    "test:neuron-meter": "node --test scripts/neuron-meter.test.mjs",
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types",
     "inspect": "npx @modelcontextprotocol/inspector@latest"

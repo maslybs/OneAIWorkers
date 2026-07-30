@@ -17,6 +17,7 @@ import { errorMessage, json, text } from "./response";
 import { APP_VERSION, getUpdateState, updateServiceStartUrl } from "./update";
 import { updatePageHtml } from "./update-page";
 import { normalizeMcpToolCallRequest } from "./mcp-request";
+import { DAILY_NEURON_ALLOCATION, USD_PER_1000_NEURONS } from "./tools/neuron-meter";
 
 export { AgentManager } from "./agents";
 
@@ -101,6 +102,15 @@ export default {
             invocation_tool: "call_connector_tool",
             native_connector_id: "native",
           },
+          neuron_meter: {
+            local_tracking_configured: Boolean(env.OAUTH_DB),
+            status_tool: "ai_neuron_status",
+            history_tool: "ai_neuron_history",
+            daily_free_allocation: DAILY_NEURON_ALLOCATION,
+            paid_price_usd_per_1000_neurons: USD_PER_1000_NEURONS,
+            reset_timezone: "UTC",
+            account_total_available_without_api_token: false,
+          },
           recommended_first_tools: ["connector_setup_status", "list_connectors", "call_connector_tool", "test_connector"],
           connector_engine: {
             storage: "D1",
@@ -147,6 +157,8 @@ export default {
             "ai_capabilities",
             "ai_models_list",
             "ai_recommend_model",
+            "ai_neuron_status",
+            "ai_neuron_history",
             "ai_chat",
             "agent_capabilities",
             "agent_team_propose",

@@ -25,6 +25,8 @@ test("exposes native AI and agent actions through the stable connector discovery
   assert.ok(actionNames.includes("agent_team_propose"));
   assert.ok(actionNames.includes("agent_run_status"));
   assert.ok(actionNames.includes("ai_recommend_model"));
+  assert.ok(actionNames.includes("ai_neuron_status"));
+  assert.ok(actionNames.includes("ai_neuron_history"));
   assert.ok(actionNames.includes("ai_chat"));
 });
 
@@ -47,6 +49,20 @@ test("runs proposal-only agent discovery through the frozen call_connector_tool 
   assert.equal(result.action_name, "agent_team_propose");
   assert.equal(result.result.proposal_only, true);
   assert.equal(result.result.created, false);
+});
+
+test("reads neuron meter status through the frozen call_connector_tool schema", async () => {
+  const result = await integrations.callConnectorTool({}, {
+    connector_id: "native",
+    action_name: "ai_neuron_status",
+    input: {},
+    dry_run: false,
+    confirmed: false,
+  });
+  assert.equal(result.native, true);
+  assert.equal(result.action_name, "ai_neuron_status");
+  assert.equal(result.result.configured, false);
+  assert.equal(result.result.daily_allocation, 10_000);
 });
 
 test("validates native AI calls in dry-run mode without consuming AI", async () => {

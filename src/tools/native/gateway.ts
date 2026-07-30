@@ -87,6 +87,7 @@ export async function callNativeTool(env: Env, invocation: NativeToolInvocation)
 }
 
 function nativeToolAvailable(env: Env, actionName: string): boolean {
+  if (actionName === "ai_neuron_status" || actionName === "ai_neuron_history") return Boolean(env.OAUTH_DB);
   if (actionName.startsWith("ai_")) return Boolean(env.AI);
   if (actionName === "agent_capabilities" || actionName === "agent_team_propose") return true;
   if (actionName === "agent_team_start") return Boolean(env.AGENT_MANAGER && env.AI);

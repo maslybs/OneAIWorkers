@@ -35,6 +35,10 @@ test("proposes a reviewable team without creating or invoking agents", () => {
   assert.equal(proposal.create_payload.confirmed, false);
   assert.ok(proposal.estimate.estimated_calls > 0);
   assert.ok(proposal.estimate.estimated_cost_usd >= 0);
+  assert.ok(proposal.estimate.estimated_neurons > 0);
+  assert.ok(proposal.estimate.maximum_neurons >= proposal.estimate.estimated_neurons);
+  assert.equal(proposal.estimate.billing_type, "workers_ai_neurons");
+  assert.ok(proposal.estimate.breakdown.every((item) => item.maximum_output_tokens >= item.output_tokens));
   assert.match(proposal.orchestration.stop_and_control.join(" "), /agent_run_cancel/u);
 });
 

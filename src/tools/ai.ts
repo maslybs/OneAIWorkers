@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { biInline } from "../i18n";
 import type { Env } from "../types";
+import {
+  neuronRatesFromPricing,
+  runMeteredWorkersAi,
+  type NeuronTrackingContext,
+} from "./neuron-meter";
 
 const MAX_MESSAGES = 50;
 const MAX_MESSAGE_CHARS = 50_000;
@@ -308,6 +313,8 @@ export function aiCapabilities(env: Env) {
       "ai_capabilities",
       "ai_models_list",
       "ai_recommend_model",
+      "ai_neuron_status",
+      "ai_neuron_history",
       "ai_chat",
       "ai_embeddings",
       "ai_extract_json",
@@ -321,6 +328,14 @@ export function aiCapabilities(env: Env) {
       max_output_tokens: MAX_OUTPUT_TOKENS,
       embedding_items: MAX_EMBEDDING_ITEMS,
       raw_input_chars: MAX_RAW_INPUT_CHARS,
+    },
+    neuron_meter: {
+      local_tracking_configured: Boolean(env.OAUTH_DB),
+      daily_allocation: 10_000,
+      reset: "00:00 UTC",
+      account_total_available: false,
+      status_tool: "ai_neuron_status",
+      history_tool: "ai_neuron_history",
     },
     notes: [
       "Every inference result reports the exact model and curated model metadata when available.",
@@ -338,7 +353,10 @@ export function aiModelsList(args: z.infer<z.ZodObject<typeof aiModelsListSchema
     const taskMatches = args.task === "all" || model.task === args.task;
     const capabilityMatches = args.capability === "all" || model.capabilities.includes(args.capability);
     return taskMatches && capabilityMatches;
-  });
+  }).map((model) => ({
+    ...model,
+    neuron_rates_per_million_units: neuronRatesFromPricing(model.pricing_usd_per_million_units),
+  }));
   return {
     curated: true,
     live_catalog: false,
@@ -382,7 +400,11 @@ export function aiRecommendModel(args: z.infer<z.ZodObject<typeof aiRecommendMod
   };
 }
 
-export async function aiChat(env: Env, args: z.infer<z.ZodObject<typeof aiChatSchema>>) {
+export async function aiChat(
+  env: Env,
+  args: z.infer<z.ZodObject<typeof aiChatSchema>>,
+  tracking?: NeuronTrackingContext,
+) {
   const model = resolveModel(args.profile, args.model, args.allow_unlisted_model);
   assertMessagesSize(args.messages);
   const input: Record<string, unknown> = {
@@ -394,12 +416,19 @@ export async function aiChat(env: Env, args: z.infer<z.ZodObject<typeof aiChatSc
   if (args.top_p !== undefined) input.top_p = args.top_p;
   if (args.seed !== undefined) input.seed = args.seed;
 
-  const result = await requireAi(env).run(model, input);
+  const metered = await runMeteredWorkersAi(env, {
+    model,
+    input,
+    pricing: optionalModelMetadata(model)?.pricing_usd_per_million_units,
+    output_kind: "text-generation",
+    context: tracking,
+  });
   return {
     model,
     requested_profile: args.profile,
     model_metadata: optionalModelMetadata(model),
-    result: normalizeAiResult(result),
+    result: normalizeAiResult(metered.result),
+    billing: metered.billing,
   };
 }
 
@@ -414,12 +443,19 @@ export async function aiEmbeddings(env: Env, args: z.infer<z.ZodObject<typeof ai
     ));
   }
 
-  const result = await requireAi(env).run(model, { text: Array.isArray(args.text) ? texts : args.text });
+  const input = { text: Array.isArray(args.text) ? texts : args.text };
+  const metered = await runMeteredWorkersAi(env, {
+    model,
+    input,
+    pricing: optionalModelMetadata(model)?.pricing_usd_per_million_units,
+    output_kind: "embeddings",
+  });
   return {
     model,
     model_metadata: optionalModelMetadata(model),
     input_count: texts.length,
-    result: normalizeAiResult(result),
+    result: normalizeAiResult(metered.result),
+    billing: metered.billing,
   };
 }
 
@@ -439,7 +475,7 @@ export async function aiExtractJson(env: Env, args: z.infer<z.ZodObject<typeof a
   ];
   assertMessagesSize(messages);
 
-  const result = await requireAi(env).run(model, {
+  const input = {
     messages,
     stream: false,
     max_tokens: args.max_tokens,
@@ -448,11 +484,18 @@ export async function aiExtractJson(env: Env, args: z.infer<z.ZodObject<typeof a
       type: "json_schema",
       json_schema: args.schema,
     },
+  };
+  const metered = await runMeteredWorkersAi(env, {
+    model,
+    input,
+    pricing: optionalModelMetadata(model)?.pricing_usd_per_million_units,
+    output_kind: "text-generation",
   });
   return {
     model,
     model_metadata: optionalModelMetadata(model),
-    result: normalizeAiResult(result),
+    result: normalizeAiResult(metered.result),
+    billing: metered.billing,
   };
 }
 
@@ -465,23 +508,20 @@ export async function aiRun(env: Env, args: z.infer<z.ZodObject<typeof aiRunSche
     ));
   }
   assertJsonSize(args.input, MAX_RAW_INPUT_CHARS, "input");
-  const result = await requireAi(env).run(model, { ...args.input, stream: false });
+  const input = { ...args.input, stream: false };
+  const metered = await runMeteredWorkersAi(env, {
+    model,
+    input,
+    pricing: optionalModelMetadata(model)?.pricing_usd_per_million_units,
+    output_kind: "text-generation",
+  });
   return {
     model,
     model_metadata: optionalModelMetadata(model),
     unlisted_model: !modelByIdOptional(model),
-    result: normalizeAiResult(result),
+    result: normalizeAiResult(metered.result),
+    billing: metered.billing,
   };
-}
-
-function requireAi(env: Env) {
-  if (!env.AI) {
-    throw new Error(biInline(
-      "Workers AI binding is not configured. Add [ai] binding = \"AI\" and redeploy.",
-      "Workers AI binding не налаштований. Додайте [ai] binding = \"AI\" і повторно задеплойте.",
-    ));
-  }
-  return env.AI;
 }
 
 function resolveModel(profile: ChatProfile, model: string | undefined, allowUnlisted: boolean) {

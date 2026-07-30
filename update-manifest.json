@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.7.1",
+  "latest_version": "0.8.0",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.7.1 adds a stable native compatibility gateway through the existing list_connectors and call_connector_tool methods. AI and agent capabilities can now be discovered and invoked even when an MCP client keeps an older frozen tool snapshot.",
-    "uk": "OneAIWorkers 0.7.1 додає стабільний native compatibility gateway через уже наявні методи list_connectors і call_connector_tool. AI та агентні можливості тепер можна знаходити й викликати навіть тоді, коли MCP-клієнт зберігає старий frozen snapshot інструментів."
+    "en": "OneAIWorkers 0.8.0 adds a local Neuron Meter for all Workers AI calls: D1 UTC usage history, per-call billing blocks, expected/max agent-team neuron preflight, reported-token confidence, daily remainder tracking, and Cloudflare error 3036 hard-limit status. The meter covers this deployment only and does not claim account-wide usage.",
+    "uk": "OneAIWorkers 0.8.0 додає локальний Neuron Meter для всіх Workers AI calls: D1 UTC usage history, per-call billing blocks, expected/max neuron preflight для agent teams, confidence за reported tokens, добовий local remainder та статус hard limit за Cloudflare error 3036. Meter охоплює лише цей deployment і не видає локальні дані за account-wide usage."
   }
 }

@@ -1,6 +1,6 @@
 # Agents and agent teams
 
-OneAIWorkers 0.7.1 supports data-defined AI agents inside the same Cloudflare Worker. It does not create a new Worker, API token, or code deployment for each agent.
+OneAIWorkers 0.8.0 supports data-defined AI agents inside the same Cloudflare Worker. It does not create a new Worker, API token, or code deployment for each agent.
 
 ## Flow
 
@@ -26,6 +26,12 @@ A team or run can define `max_budget_usd`. If the estimate exceeds that limit, n
 
 The value is an estimate, not a billing guarantee. Actual cost depends on real token usage, retries, pricing changes, and the daily free Workers AI allocation.
 
+## Neuron preflight and usage
+
+Proposals now include expected and output-bounded maximum neuron estimates. Before `agent_team_start` queues a run, OneAIWorkers compares those estimates with the locally tracked PSY remainder for the current UTC day. When local history exists, the expected estimate uses a 30-day agent/model token average; otherwise it uses the team token assumptions.
+
+Every agent call is recorded in the shared D1 Neuron Meter with `run_id` and `agent_id`. Run status accumulates estimated neurons and reports whether each call used Cloudflare-reported tokens or a local fallback estimate. This is not an account-wide Cloudflare total; see `NEURON_METER.md`.
+
 ## Lifecycle controls
 
 - Disable an agent with `agent_update` and `enabled: false`.
@@ -33,13 +39,14 @@ The value is an estimate, not a billing guarantee. Actual cost depends on real t
 - Inspect or cancel an active run through `agent_run_status` and `agent_run_cancel`.
 - Create, update, delete, run, and cancel operations require explicit confirmation where appropriate.
 
-## Version 0.7.1 limits
+## Version 0.8.0 limits
 
 - Up to 8 agents per team.
 - Up to 3 review rounds.
 - Agents perform AI-only analysis, drafting, review, and synthesis. They do not yet invoke saved connector tools.
 - Cancellation is cooperative: a Workers AI request already in flight cannot be interrupted, but the next step will not start.
 - Registry, queue, progress, budgets, and results are stored in the SQLite-backed `AgentManager` Durable Object.
+- The local Neuron Meter does not include other Workers or dashboard calls in the same Cloudflare account.
 
 ## Clients with a cached tool list
 
@@ -88,4 +95,6 @@ agent_team_start
 agent_run_list
 agent_run_status
 agent_run_cancel
+ai_neuron_status
+ai_neuron_history
 ```

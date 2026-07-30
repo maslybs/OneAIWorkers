@@ -1,6 +1,6 @@
 # Агенти та команди агентів
 
-OneAIWorkers 0.7.1 підтримує data-defined AI агентів у тому самому Cloudflare Worker. Для кожного агента не створюється новий Worker, API token або окремий код.
+OneAIWorkers 0.8.0 підтримує data-defined AI агентів у тому самому Cloudflare Worker. Для кожного агента не створюється новий Worker, API token або окремий код.
 
 ## Як це працює
 
@@ -11,11 +11,12 @@ OneAIWorkers 0.7.1 підтримує data-defined AI агентів у тому
    - етапи orchestration;
    - очікувані результати;
    - приблизну вартість у USD;
+   - expected і maximum neuron estimates;
    - create payload із `confirmed: false`.
 2. Після перевірки користувач окремо підтверджує `agent_team_create`.
 3. Перед кожним виконанням `agent_team_start` знову показує кошторис і вимагає `confirmed: true`.
 4. Durable Object ставить run у чергу. Coordinator планує роботу, спеціалісти виконують свої частини, coordinator дає feedback між rounds і синтезує фінальний результат.
-5. `agent_run_status` повертає stage, outputs, usage estimate, error або final result.
+5. `agent_run_status` повертає stage, outputs, usage estimate, neuron usage, error або final result.
 6. `agent_run_cancel` запитує зупинку між AI calls.
 
 ## Контроль вартості
@@ -31,6 +32,12 @@ OneAIWorkers 0.7.1 підтримує data-defined AI агентів у тому
 
 Це estimate, а не billing guarantee. Реальна вартість залежить від фактичних tokens, retries, змін pricing та daily free Workers AI allocation.
 
+## Neuron preflight та usage
+
+Proposal тепер містить expected і output-bounded maximum neuron estimates. Перед тим як `agent_team_start` поставить run у чергу, OneAIWorkers порівнює ці estimates з локально відстеженим залишком PSY на поточну UTC-добу. Якщо є локальна історія, expected estimate використовує 30-денне середнє token usage для agent/model; інакше використовуються team token assumptions.
+
+Кожен agent call записується в спільний D1 Neuron Meter із `run_id` та `agent_id`. Run status накопичує estimated neurons і показує, чи кожен call використовував Cloudflare-reported tokens або локальну fallback estimate. Це не account-wide Cloudflare total; деталі наведено в `NEURON_METER.uk.md`.
+
 ## Увімкнення й вимкнення
 
 - `agent_update` з `enabled: false` блокує майбутні runs цього агента.
@@ -38,13 +45,14 @@ OneAIWorkers 0.7.1 підтримує data-defined AI агентів у тому
 - Активний run контролюється через `agent_run_status` і `agent_run_cancel`.
 - Видалення агента або команди завжди потребує explicit confirmation.
 
-## Обмеження 0.7.1
+## Обмеження 0.8.0
 
 - Максимум 8 агентів у команді.
 - Максимум 3 rounds.
 - Agents виконують AI-only analysis/drafting/review. Вони ще не викликають saved connector tools.
 - Cancellation є cooperative: AI request, що вже виконується, не можна перервати, але наступний step не почнеться.
 - Черга, progress і results зберігаються в SQLite-backed Durable Object `AgentManager`.
+- Локальний Neuron Meter не бачить usage інших Workers або dashboard calls у тому самому Cloudflare account.
 
 ## Клієнти із закешованим списком tools
 
@@ -74,6 +82,16 @@ OneAIWorkers 0.7.1 підтримує data-defined AI агентів у тому
 
 Для AI inference, створення, зміни, видалення, запуску або cancellation використовується зовнішнє поле `confirmed: true`. `dry_run: true` лише перевіряє input і нічого не запускає.
 
+Neuron status через frozen gateway:
+
+```json
+{
+  "connector_id": "native",
+  "action_name": "ai_neuron_status",
+  "input": {}
+}
+```
+
 ## Основні tools
 
 ```text
@@ -93,4 +111,6 @@ agent_team_start
 agent_run_list
 agent_run_status
 agent_run_cancel
+ai_neuron_status
+ai_neuron_history
 ```

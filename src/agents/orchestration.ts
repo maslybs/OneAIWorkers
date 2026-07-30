@@ -1,7 +1,13 @@
 import type { Env } from "../types";
 import { aiChat, type ChatProfile } from "../tools/ai";
 import { MAX_RESULT_CHARS } from "./constants";
-import { addUsage, estimateSingleCallCost, estimateTeamCost } from "./pricing";
+import {
+  addUsage,
+  buildAgentNeuronPreflight,
+  estimateSingleCallCost,
+  estimateSingleCallNeurons,
+  estimateTeamCost,
+} from "./pricing";
 import { AgentRepository } from "./repository";
 import type { AgentCallResult, AgentRecord, RunRecord } from "./types";
 import {
@@ -30,6 +36,7 @@ export class AgentOrchestrator {
     }
 
     const estimate = estimateTeamCost(team, agents);
+    estimate.neuron_preflight = await buildAgentNeuronPreflight(this.env, team, agents);
     const effectiveBudget = budgetOverride ?? team.max_budget_usd;
     if (
       effectiveBudget !== null
@@ -53,7 +60,14 @@ export class AgentOrchestrator {
         round: 1,
         member_index: 0,
         outputs: [],
-        usage: { input_tokens: 0, output_tokens: 0, estimated_cost_usd: 0 },
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          estimated_cost_usd: 0,
+          estimated_neurons: 0,
+          reported_token_calls: 0,
+          estimated_token_calls: 0,
+        },
       },
       estimate,
       final_result: null,
@@ -91,7 +105,7 @@ export class AgentOrchestrator {
           `Team members: ${members.map((agent) => `${agent.name} — ${agent.role}`).join("; ")}`,
           "Create a concise delegation plan. Assign one concrete deliverable to each specialist and define the final acceptance criteria.",
         ].join("\n\n");
-        const call = await this.callAgent(coordinator, prompt);
+        const call = await this.callAgent(run.id, coordinator, prompt);
         run.state.coordinator_plan = call.text;
         addUsage(run.state.usage, call);
         run.stage = "members";
@@ -114,7 +128,7 @@ export class AgentOrchestrator {
             `Your responsibility: ${agent.role}`,
             "Produce your assigned deliverable. Be explicit about assumptions, risks, and unresolved questions.",
           ].filter(Boolean).join("\n\n");
-          const call = await this.callAgent(agent, prompt);
+          const call = await this.callAgent(run.id, agent, prompt);
           run.state.outputs.push({
             agent_id: agent.id,
             agent_name: agent.name,
@@ -139,7 +153,7 @@ export class AgentOrchestrator {
           compactOutputs(run.state.outputs.filter((item) => item.round === run.state.round)),
           "Review the outputs. Identify contradictions, missing evidence, and concrete revision instructions for the next round.",
         ].join("\n\n");
-        const call = await this.callAgent(coordinator, prompt);
+        const call = await this.callAgent(run.id, coordinator, prompt);
         run.state.feedback = call.text;
         run.state.round += 1;
         run.state.member_index = 0;
@@ -156,7 +170,7 @@ export class AgentOrchestrator {
         compactOutputs(run.state.outputs),
         "Synthesize one final result. Resolve conflicts, separate verified conclusions from assumptions, and finish with recommended next actions.",
       ].join("\n\n");
-      const call = await this.callAgent(coordinator, prompt);
+      const call = await this.callAgent(run.id, coordinator, prompt);
       addUsage(run.state.usage, call);
       run.final_result = call.text;
       run.status = "completed";
@@ -173,7 +187,7 @@ export class AgentOrchestrator {
     }
   }
 
-  private async callAgent(agent: AgentRecord, userPrompt: string): Promise<AgentCallResult> {
+  private async callAgent(runId: string, agent: AgentRecord, userPrompt: string): Promise<AgentCallResult> {
     const messages = [
       {
         role: "system" as const,
@@ -190,16 +204,27 @@ export class AgentOrchestrator {
       temperature: agent.temperature,
       top_p: undefined,
       seed: undefined,
+    }, {
+      run_id: runId,
+      agent_id: agent.id,
     });
     const text = truncate(extractAiText(result.result), MAX_RESULT_CHARS);
-    const inputTokens = estimateTokens(messages.map((message) => message.content).join("\n"));
-    const outputTokens = estimateTokens(text);
+    const fallbackInputTokens = estimateTokens(messages.map((message) => message.content).join("\n"));
+    const fallbackOutputTokens = estimateTokens(text);
+    const inputTokens = result.billing.prompt_tokens ?? fallbackInputTokens;
+    const outputTokens = result.billing.completion_tokens ?? fallbackOutputTokens;
     return {
       text,
       model: result.model,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
-      estimated_cost_usd: estimateSingleCallCost(result.model, inputTokens, outputTokens) ?? 0,
+      estimated_cost_usd: result.billing.estimated_cost_usd
+        ?? estimateSingleCallCost(result.model, inputTokens, outputTokens)
+        ?? 0,
+      estimated_neurons: result.billing.estimated_neurons
+        ?? estimateSingleCallNeurons(result.model, inputTokens, outputTokens)
+        ?? 0,
+      token_source: result.billing.source,
     };
   }
 }

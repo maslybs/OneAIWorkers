@@ -49,6 +49,12 @@ import {
   aiRun,
   aiRunSchema,
 } from "../ai";
+import {
+  aiNeuronHistory,
+  aiNeuronHistorySchema,
+  aiNeuronStatus,
+  aiNeuronStatusSchema,
+} from "../neuron-meter";
 import type { NativeToolDefinition } from "./types";
 
 function define(
@@ -78,6 +84,18 @@ export const NATIVE_TOOLS: NativeToolDefinition[] = [
     consumes_ai: false,
     requires_confirmation: false,
     handler: (_env, args) => aiRecommendModel(args),
+  }),
+  define("ai_neuron_status", "Shows today's locally tracked PSY neuron usage, remaining free allocation, reset time, and confidence limits.", aiNeuronStatusSchema, {
+    read_only: true,
+    consumes_ai: false,
+    requires_confirmation: false,
+    handler: (env) => aiNeuronStatus(env),
+  }),
+  define("ai_neuron_history", "Lists recent local neuron ledger entries without storing prompts or model outputs.", aiNeuronHistorySchema, {
+    read_only: true,
+    consumes_ai: false,
+    requires_confirmation: false,
+    handler: (env, args) => aiNeuronHistory(env, args),
   }),
   define("ai_chat", "Runs a non-streaming Workers AI chat request and consumes AI quota.", aiChatSchema, {
     read_only: false,

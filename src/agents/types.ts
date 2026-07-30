@@ -41,6 +41,9 @@ export interface UsageEstimate {
   input_tokens: number;
   output_tokens: number;
   estimated_cost_usd: number;
+  estimated_neurons: number;
+  reported_token_calls: number;
+  estimated_token_calls: number;
 }
 
 export interface RunStateData {
@@ -76,16 +79,52 @@ export interface TeamCostBreakdown {
   calls: number;
   input_tokens: number;
   output_tokens: number;
+  maximum_output_tokens: number;
   estimated_cost_usd: number | null;
+  estimated_neurons: number | null;
+  maximum_neurons: number | null;
+}
+
+export interface AgentNeuronPreflightBreakdown {
+  agent_id?: string;
+  agent_name: string;
+  model: string;
+  calls: number;
+  expected_input_tokens_per_call: number;
+  expected_output_tokens_per_call: number;
+  maximum_output_tokens_per_call: number;
+  history_samples: number;
+  expected_neurons: number | null;
+  maximum_neurons: number | null;
+}
+
+export interface AgentNeuronPreflight {
+  billing_type: "workers_ai_neurons";
+  expected_neurons: number | null;
+  maximum_neurons: number | null;
+  current_local_used_neurons: number | null;
+  current_local_remaining_neurons: number | null;
+  daily_allocation: number;
+  expected_fits_within_local_remaining: boolean | null;
+  maximum_fits_within_local_remaining: boolean | null;
+  resets_at: string;
+  source: "local_history_and_team_config" | "team_config";
+  confidence: "partial" | "low";
+  breakdown: AgentNeuronPreflightBreakdown[];
+  warning: string;
 }
 
 export interface TeamCostEstimate {
   currency: "USD";
+  billing_type: "workers_ai_neurons";
   estimated_cost_usd: number | null;
+  estimated_neurons: number | null;
+  maximum_neurons: number | null;
   estimated_calls: number;
   estimated_input_tokens: number;
   estimated_output_tokens: number;
   breakdown: TeamCostBreakdown[];
+  neuron_preflight?: AgentNeuronPreflight;
   warnings: string[];
   pricing_snapshot_verified_at: string;
 }
@@ -141,6 +180,8 @@ export interface AgentCallResult {
   input_tokens: number;
   output_tokens: number;
   estimated_cost_usd: number;
+  estimated_neurons: number;
+  token_source: "local_reported_tokens" | "local_estimated_tokens";
 }
 
 export interface TeamCreateInput {

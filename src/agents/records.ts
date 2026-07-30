@@ -43,14 +43,33 @@ export function teamFromRow(row: TeamRow): TeamRecord {
 }
 
 export function runFromRow(row: RunRow): RunRecord {
+  const state = JSON.parse(row.state_json) as RunStateData;
+  state.usage = {
+    input_tokens: state.usage?.input_tokens ?? 0,
+    output_tokens: state.usage?.output_tokens ?? 0,
+    estimated_cost_usd: state.usage?.estimated_cost_usd ?? 0,
+    estimated_neurons: state.usage?.estimated_neurons ?? 0,
+    reported_token_calls: state.usage?.reported_token_calls ?? 0,
+    estimated_token_calls: state.usage?.estimated_token_calls ?? 0,
+  };
+  const estimate = JSON.parse(row.estimate_json) as TeamCostEstimate;
+  estimate.billing_type ||= "workers_ai_neurons";
+  estimate.estimated_neurons ??= null;
+  estimate.maximum_neurons ??= null;
+  estimate.breakdown = (estimate.breakdown || []).map((item) => ({
+    ...item,
+    maximum_output_tokens: item.maximum_output_tokens ?? item.output_tokens,
+    estimated_neurons: item.estimated_neurons ?? null,
+    maximum_neurons: item.maximum_neurons ?? null,
+  }));
   return {
     id: row.id,
     team_id: row.team_id,
     task: row.task,
     status: row.status,
     stage: row.stage,
-    state: JSON.parse(row.state_json) as RunStateData,
-    estimate: JSON.parse(row.estimate_json) as TeamCostEstimate,
+    state,
+    estimate,
     final_result: row.final_result,
     error: row.error,
     cancellation_requested: Boolean(row.cancellation_requested),
