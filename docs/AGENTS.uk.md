@@ -56,12 +56,14 @@ Proposal тепер містить expected і output-bounded maximum neuron est
 
 ## Клієнти із закешованим списком tools
 
-Деякі MCP-клієнти зберігають snapshot top-level tools і не показують нові `agent_*` actions після оновлення Worker. Для таких клієнтів OneAIWorkers використовує два стабільні methods, які не потрібно змінювати між релізами:
+Деякі MCP-клієнти зберігають старий список верхньорівневих команд. Для таких клієнтів OneAIWorkers має дві постійні живі дії:
 
 1. Викличте `list_connectors` з `include_actions: true`.
-2. Знайдіть віртуальний connector з `connector_id: native`.
+2. Для керування конекторами використовуйте `connector_id: system`, для AI та агентів — `connector_id: native`, а для збереженого конектора — його власний ID.
 3. Виберіть потрібну action та її `input_schema`.
-4. Викличте `call_connector_tool` з `connector_id: native` і назвою action.
+4. Викличте `call_connector_tool` з цим ID та назвою action.
+
+Шлюз читає поточний реєстр конекторів із D1 під час кожного виклику. Для сумісності зі старими клієнтами відомі системні дії також працюють через `connector_id: native`.
 
 Приклад proposal без створення агентів і без AI-витрат:
 

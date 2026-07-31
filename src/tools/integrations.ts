@@ -1,6 +1,17 @@
 import { z } from "zod";
-import { deleteConnectorCredentials, loadCredentialProfile } from "../vault";
-import { ensureMarketplaceSchema, getInstalledPackage } from "../marketplace";
+import { APP_VERSION } from "../update";
+import { createConnectorAccessToken, deleteConnectorCredentials, loadCredentialProfile } from "../vault";
+import {
+  connectorInstallationHelp,
+  connectorInstallationHelpSchema,
+  connectorSettingsLinkSchema,
+  connectorUpdatesSchema,
+  ensureMarketplaceSchema,
+  findCapability,
+  findCapabilitySchema,
+  getInstalledPackage,
+  listConnectorUpdates,
+} from "../marketplace";
 import { biInline } from "../i18n";
 import { assertSafeOutboundUrl, redactSensitiveText, redactSensitiveValue, redactUrlForOutput, safeKey } from "../security";
 import type { Env } from "../types";
@@ -11,6 +22,7 @@ import type { ActionRow, AuthConfig, ConnectorMode, ConnectorRow, JsonObject } f
 import { callNativeTool, isNativeConnectorId, nativeConnectorView } from "./native";
 
 const MAX_RESPONSE_TEXT = 24_000;
+const SYSTEM_CONNECTOR_ID = "system";
 
 let schemaReady: Promise<void> | null = null;
 
@@ -65,6 +77,42 @@ export const testConnectorSchema = {
   dry_run: z.boolean().default(true),
   confirmed: z.boolean().default(false).describe(biInline("Required when dry_run=false for an action that can create an external side effect.", "Потрібно, коли dry_run=false для action, яка може створити зовнішній side effect.")),
 };
+
+interface SystemActionDefinition {
+  name: string;
+  description: string;
+  schema: z.ZodObject<any>;
+  read_only: boolean;
+  requires_confirmation: boolean;
+}
+
+function systemAction(
+  name: string,
+  description: string,
+  shape: Record<string, z.ZodType>,
+  options: { readOnly?: boolean; requiresConfirmation?: boolean } = {},
+): SystemActionDefinition {
+  return {
+    name,
+    description,
+    schema: z.object(shape),
+    read_only: options.readOnly ?? true,
+    requires_confirmation: options.requiresConfirmation ?? false,
+  };
+}
+
+const SYSTEM_ACTIONS: SystemActionDefinition[] = [
+  systemAction("runtime_info", "Returns the live Worker version and stable gateway contract.", {}),
+  systemAction("list_connectors", "Reads the current connector registry directly from D1.", listConnectorsSchema),
+  systemAction("connector_setup_status", "Reads the current connector engine and credential readiness.", connectorSetupStatusSchema),
+  systemAction("connector_installation_help", "Returns the current connector installation flow.", connectorInstallationHelpSchema),
+  systemAction("find_capability", "Searches the live marketplace catalog for a compatible connector.", findCapabilitySchema),
+  systemAction("list_connector_updates", "Checks the live marketplace for installed connector updates.", connectorUpdatesSchema),
+  systemAction("get_connector_settings_link", "Creates a short-lived protected browser link for connector credentials.", connectorSettingsLinkSchema, { readOnly: false }),
+  systemAction("save_connector", "Creates or updates a connector manifest in D1.", saveConnectorSchema, { readOnly: false, requiresConfirmation: true }),
+  systemAction("test_connector", "Tests a connector action, using dry-run by default.", testConnectorSchema, { readOnly: false }),
+  systemAction("delete_connector", "Deletes a connector and its stored credentials.", connectorIdSchema, { readOnly: false, requiresConfirmation: true }),
+];
 
 export interface ConnectorMcpTool {
   tool_name: string;
@@ -222,10 +270,10 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
   await ensureConnectorSchema(env);
 
   const connectorId = safeKey(args.connector_id).replaceAll(":", "-");
-  if (isNativeConnectorId(connectorId)) {
+  if (isNativeConnectorId(connectorId) || isSystemConnectorId(connectorId)) {
     throw new Error(biInline(
-      "The native connector ID is reserved by OneAIWorkers and cannot be overwritten.",
-      "ID native connector зарезервований OneAIWorkers і не може бути перезаписаний.",
+      "Virtual system connector IDs are reserved by OneAIWorkers and cannot be overwritten.",
+      "ID віртуальних системних конекторів зарезервовані OneAIWorkers і не можуть бути перезаписані.",
     ));
   }
   const now = nowSeconds();
@@ -275,17 +323,21 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
     actions: args.actions.length,
     mode,
     tool_names: args.actions.map((action) => `${toolNamePart(connectorId)}_${toolNamePart(action.name)}`),
-    refresh_required: true,
+    stable_gateway_ready: true,
+    refresh_required_for_shortcut_tools_only: true,
     next_step: biInline(
-      "Refresh the MCP tool list once. The saved actions will then be available as top-level tools.",
-      "Оновіть список MCP-інструментів один раз. Після цього збережені дії з’являться як окремі інструменти.",
+      "Use list_connectors and call_connector_tool immediately. Refreshing the MCP tool list is optional and only adds top-level shortcut tools.",
+      "Одразу використовуйте list_connectors і call_connector_tool. Оновлення списку MCP-команд необов’язкове й лише додає окремі короткі команди.",
     ),
   };
 }
 
 export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof listConnectorsSchema>>) {
-  const connectors: JsonObject[] = [nativeConnectorView(env, args.include_actions)];
-  if (!env.OAUTH_DB) return { connectors };
+  const connectors: JsonObject[] = [
+    systemConnectorView(env, args.include_actions),
+    nativeConnectorView(env, args.include_actions),
+  ];
+  if (!env.OAUTH_DB) return liveConnectorSnapshot(env, connectors);
 
   const db = getDb(env);
   await ensureConnectorSchema(env);
@@ -309,15 +361,242 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
     if (args.include_actions) item.actions = await listActionsForConnector(env, db, row.connector_id);
     connectors.push(item);
   }
-  return { connectors };
+  return liveConnectorSnapshot(env, connectors);
+}
+
+export async function getConnectorSettingsLink(env: Env, baseUrl: string, connectorId: string) {
+  const installed = await getInstalledPackage(env, connectorId);
+  if (!installed) {
+    throw new Error(biInline(
+      "Installed marketplace connector not found.",
+      "Встановлений конектор із каталогу не знайдено.",
+    ));
+  }
+  const token = await createConnectorAccessToken(env, installed.connector_id);
+  const settingsUrl = `${requireBaseUrl(baseUrl)}/connectors/access/${encodeURIComponent(token)}`;
+  return {
+    ok: true,
+    connector_id: installed.connector_id,
+    settings_url: settingsUrl,
+    expires_in_seconds: 600,
+    response_instruction: biInline(
+      `Put this link first and tell the user to open it in a normal browser: ${settingsUrl}`,
+      `Поставте це посилання першим і скажіть користувачу відкрити його у звичайному браузері: ${settingsUrl}`,
+    ),
+  };
+}
+
+function systemConnectorView(env: Env, includeActions: boolean): JsonObject {
+  const connector: JsonObject = {
+    connector_id: SYSTEM_CONNECTOR_ID,
+    name: "OneAIWorkers System",
+    description: "Stable live gateway for connector discovery, installation, settings, testing, saving, and updates. Use this through call_connector_tool when a client has cached an older top-level MCP tool list.",
+    mode: "system",
+    virtual: true,
+    persisted_in_d1: false,
+    gateway_route: "call_connector_tool",
+    enabled: true,
+    runtime_version: APP_VERSION,
+    connector_registry_source: env.OAUTH_DB ? "D1_live" : "unavailable",
+  };
+  if (includeActions) {
+    connector.actions = SYSTEM_ACTIONS.map((action) => ({
+      name: action.name,
+      description: action.description,
+      input_schema: z.toJSONSchema(action.schema),
+      read_only: action.read_only,
+      side_effect: !action.read_only,
+      consumes_ai: false,
+      requires_confirmation: action.requires_confirmation,
+      available: systemActionAvailable(env, action.name),
+    }));
+  }
+  return connector;
+}
+
+async function callSystemTool(
+  env: Env,
+  baseUrl: string,
+  invocation: {
+    action_name: string;
+    input: Record<string, unknown>;
+    dry_run: boolean;
+    confirmed: boolean;
+  },
+): Promise<unknown> {
+  const action = findSystemAction(invocation.action_name);
+  if (!action) {
+    throw new Error(biInline(
+      `Unknown system action: ${invocation.action_name}. Use list_connectors with include_actions=true and connector_id=system to discover current management actions.`,
+      `Невідома системна дія: ${invocation.action_name}. Використайте list_connectors з include_actions=true і connector_id=system, щоб отримати актуальні дії керування.`,
+    ));
+  }
+
+  const input: Record<string, unknown> = { ...invocation.input };
+  if ("confirmed" in action.schema.shape) input.confirmed = invocation.confirmed || input.confirmed;
+  const parsed = action.schema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(biInline(
+      `Invalid input for ${action.name}: ${z.prettifyError(parsed.error)}`,
+      `Некоректні параметри для ${action.name}: ${z.prettifyError(parsed.error)}`,
+    ));
+  }
+
+  if (invocation.dry_run) {
+    return {
+      ok: true,
+      system: true,
+      dry_run: true,
+      action_name: action.name,
+      validated_input: parsed.data,
+      requires_confirmation: action.requires_confirmation,
+      note: "No system action was executed.",
+    };
+  }
+
+  if (action.requires_confirmation && !invocation.confirmed) {
+    throw new Error(biInline(
+      `Explicit confirmation is required for system action ${action.name}. Retry call_connector_tool with confirmed=true after the user approves.`,
+      `Для системної дії ${action.name} потрібне явне підтвердження. Повторіть call_connector_tool з confirmed=true після згоди користувача.`,
+    ));
+  }
+
+  let result: unknown;
+  switch (action.name) {
+    case "runtime_info":
+      result = {
+        ok: true,
+        name: env.HUB_NAME || "OneAIWorkers",
+        version: APP_VERSION,
+        generated_at: new Date().toISOString(),
+        connector_registry_source: env.OAUTH_DB ? "D1_live" : "unavailable",
+        stable_gateway: {
+          discovery_tool: "list_connectors",
+          invocation_tool: "call_connector_tool",
+          system_connector_id: SYSTEM_CONNECTOR_ID,
+          native_connector_id: "native",
+        },
+      };
+      break;
+    case "list_connectors":
+      result = await listConnectors(env, parseSystemInput(listConnectorsSchema, parsed.data));
+      break;
+    case "connector_setup_status":
+      result = await connectorSetupStatus(env, parseSystemInput(connectorSetupStatusSchema, parsed.data));
+      break;
+    case "connector_installation_help":
+      result = connectorInstallationHelp(parseSystemInput(connectorInstallationHelpSchema, parsed.data));
+      break;
+    case "find_capability":
+      result = await findCapability(env, requireBaseUrl(baseUrl), parseSystemInput(findCapabilitySchema, parsed.data));
+      break;
+    case "list_connector_updates":
+      result = await listConnectorUpdates(env, requireBaseUrl(baseUrl));
+      break;
+    case "get_connector_settings_link":
+      result = await getConnectorSettingsLink(
+        env,
+        requireBaseUrl(baseUrl),
+        parseSystemInput(connectorSettingsLinkSchema, parsed.data).connector_id,
+      );
+      break;
+    case "save_connector":
+      result = await saveConnector(env, parseSystemInput(saveConnectorSchema, parsed.data));
+      break;
+    case "test_connector": {
+      const testInput = parseSystemInput(testConnectorSchema, parsed.data);
+      if (
+        isSystemConnectorId(normalizeKey(testInput.connector_id)) &&
+        testInput.action_name &&
+        normalizeKey(testInput.action_name) === "test_connector"
+      ) {
+        throw new Error(biInline(
+          "The system test action cannot test itself.",
+          "Системна дія перевірки не може перевіряти саму себе.",
+        ));
+      }
+      result = await testConnector(env, testInput, baseUrl);
+      break;
+    }
+    case "delete_connector":
+      result = await deleteConnector(env, parseSystemInput(connectorIdSchema, parsed.data));
+      break;
+    default:
+      throw new Error(`Unsupported system action: ${action.name}`);
+  }
+
+  return {
+    ok: true,
+    system: true,
+    action_name: action.name,
+    result,
+  };
+}
+
+function findSystemAction(actionName: string): SystemActionDefinition | undefined {
+  const normalized = actionName.startsWith("system_") ? actionName.slice("system_".length) : actionName;
+  return SYSTEM_ACTIONS.find((action) => action.name === normalized);
+}
+
+function parseSystemInput<T extends Record<string, z.ZodType>>(
+  shape: T,
+  input: unknown,
+): z.infer<z.ZodObject<T>> {
+  return z.object(shape).parse(input);
+}
+
+function isSystemConnectorId(connectorId: string): boolean {
+  return connectorId === SYSTEM_CONNECTOR_ID || connectorId === "management";
+}
+
+function systemActionAvailable(env: Env, actionName: string): boolean {
+  if (["list_connector_updates", "get_connector_settings_link", "save_connector", "test_connector", "delete_connector"].includes(actionName)) {
+    return Boolean(env.OAUTH_DB);
+  }
+  return true;
+}
+
+function liveConnectorSnapshot(env: Env, connectors: JsonObject[]) {
+  return {
+    ok: true,
+    runtime: liveGatewayMetadata(env),
+    connectors,
+  };
+}
+
+function withLiveGatewayMetadata(result: unknown, env: Env): unknown {
+  const gatewayRuntime = liveGatewayMetadata(env);
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    return { ...(result as Record<string, unknown>), gateway_runtime: gatewayRuntime };
+  }
+  return { ok: true, result, gateway_runtime: gatewayRuntime };
+}
+
+function liveGatewayMetadata(env: Env) {
+  return {
+    version: APP_VERSION,
+    generated_at: new Date().toISOString(),
+    connector_registry_source: env.OAUTH_DB ? "D1_live" : "unavailable",
+    http_cache: "no-store",
+  };
+}
+
+function requireBaseUrl(baseUrl: string): string {
+  if (!baseUrl) {
+    throw new Error(biInline(
+      "The live Worker address is unavailable for this action.",
+      "Для цієї дії недоступна жива адреса Worker.",
+    ));
+  }
+  return new URL(baseUrl).origin;
 }
 
 export async function deleteConnector(env: Env, args: z.infer<z.ZodObject<typeof connectorIdSchema>>) {
   const connectorId = normalizeKey(args.connector_id);
-  if (isNativeConnectorId(connectorId)) {
+  if (isNativeConnectorId(connectorId) || isSystemConnectorId(connectorId)) {
     throw new Error(biInline(
-      "The virtual native connector cannot be deleted.",
-      "Віртуальний native connector не можна видалити.",
+      "Virtual system connectors cannot be deleted.",
+      "Віртуальні системні конектори не можна видалити.",
     ));
   }
   const db = getDb(env);
@@ -331,11 +610,34 @@ export async function deleteConnector(env: Env, args: z.infer<z.ZodObject<typeof
   return { ok: true, connector_id: connectorId };
 }
 
-export async function testConnector(env: Env, args: z.infer<z.ZodObject<typeof testConnectorSchema>>) {
+export async function testConnector(
+  env: Env,
+  args: z.infer<z.ZodObject<typeof testConnectorSchema>>,
+  baseUrl = "",
+) {
   const connectorId = normalizeKey(args.connector_id);
   const actionName = args.action_name ? normalizeKey(args.action_name) : null;
+  if (isSystemConnectorId(connectorId)) {
+    if (!actionName) return { ok: true, connector: systemConnectorView(env, true) };
+    if (findSystemAction(actionName)) {
+      return callSystemTool(env, baseUrl, {
+        action_name: actionName,
+        input: args.input || {},
+        dry_run: args.dry_run ?? true,
+        confirmed: args.confirmed ?? false,
+      });
+    }
+  }
   if (isNativeConnectorId(connectorId)) {
     if (!actionName) return { ok: true, connector: nativeConnectorView(env, true) };
+    if (findSystemAction(actionName)) {
+      return callSystemTool(env, baseUrl, {
+        action_name: actionName,
+        input: args.input || {},
+        dry_run: args.dry_run ?? true,
+        confirmed: args.confirmed ?? false,
+      });
+    }
     return callNativeTool(env, {
       action_name: actionName,
       input: args.input || {},
@@ -355,19 +657,31 @@ export async function testConnector(env: Env, args: z.infer<z.ZodObject<typeof t
     input: args.input || {},
     dry_run: args.dry_run ?? true,
     confirmed: args.confirmed ?? false,
-  });
+  }, baseUrl);
 }
 
-export async function callConnectorTool(env: Env, args: z.infer<z.ZodObject<typeof callConnectorToolSchema>>) {
+export async function callConnectorTool(
+  env: Env,
+  args: z.infer<z.ZodObject<typeof callConnectorToolSchema>>,
+  baseUrl = "",
+) {
   const connectorId = normalizeKey(args.connector_id);
   const actionName = normalizeKey(args.action_name);
-  if (isNativeConnectorId(connectorId)) {
-    return callNativeTool(env, {
+  if ((isSystemConnectorId(connectorId) || isNativeConnectorId(connectorId)) && findSystemAction(actionName)) {
+    return withLiveGatewayMetadata(await callSystemTool(env, baseUrl, {
       action_name: actionName,
       input: args.input || {},
       dry_run: args.dry_run || false,
       confirmed: args.confirmed || false,
-    });
+    }), env);
+  }
+  if (isNativeConnectorId(connectorId)) {
+    return withLiveGatewayMetadata(await callNativeTool(env, {
+      action_name: actionName,
+      input: args.input || {},
+      dry_run: args.dry_run || false,
+      confirmed: args.confirmed || false,
+    }), env);
   }
 
   const db = getDb(env);
@@ -386,11 +700,16 @@ export async function callConnectorTool(env: Env, args: z.infer<z.ZodObject<type
     ));
   }
 
-  if (connector.mode === "child_worker") return callChildWorkerConnector(env, connector, action.action_name, args.input || {}, dryRun);
+  if (connector.mode === "child_worker") {
+    return withLiveGatewayMetadata(
+      await callChildWorkerConnector(env, connector, action.action_name, args.input || {}, dryRun),
+      env,
+    );
+  }
 
   const result = await callInternalAction(env, action, args.input || {}, dryRun);
   await audit(db, connectorId, actionName, args.dry_run ? "dry_run_action" : "call_action", true, `${action.method} ${action.url}`);
-  return result;
+  return withLiveGatewayMetadata(result, env);
 }
 
 async function findConnectorAction(db: D1Database, connectorId: string, actionName: string): Promise<ActionRow | null> {

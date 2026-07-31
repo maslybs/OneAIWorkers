@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.9.1",
+  "latest_version": "0.9.2",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.9.1 gives exact connector installation guidance, verifies availability through the real marketplace, and puts the browser installation link first.",
-    "uk": "OneAIWorkers 0.9.1 дає точну інструкцію встановлення конекторів, перевіряє їх наявність у справжньому каталозі та ставить посилання для браузера на початок відповіді."
+    "en": "OneAIWorkers 0.9.2 keeps connector management working through the stable live gateway even when an MCP client has cached an older tool list.",
+    "uk": "OneAIWorkers 0.9.2 зберігає керування конекторами через стабільний живий шлюз, навіть якщо MCP-клієнт має застарілий список команд."
   }
 }

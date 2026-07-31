@@ -190,8 +190,10 @@ test("verifies installer tickets with the matching ECDSA public key", async () =
 test("searches a downloaded marketplace catalog without sending the user query", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
-  globalThis.fetch = async (input) => {
+  const requestOptions = [];
+  globalThis.fetch = async (input, init) => {
     requests.push(String(input));
+    requestOptions.push(init);
     return Response.json({
       items: [{
         id: "n8n",
@@ -224,7 +226,17 @@ test("searches a downloaded marketplace catalog without sending the user query",
     assert.equal(result.browser_action.url, result.matches[0].install_url);
     assert.equal(result.browser_action.open_in_normal_browser, true);
     assert.match(result.credential_next_step, /Never ask for the service key in chat/u);
-    assert.deepEqual(requests, ["https://marketplace.example/catalog"]);
+    await marketplaceHelpers.findCapability(
+      { MARKETPLACE_CATALOG_URL: "https://marketplace.example/catalog" },
+      "https://worker.example",
+      { query: "inspect workflow executions", limit: 5, language: "en" },
+    );
+    assert.deepEqual(requests, [
+      "https://marketplace.example/catalog",
+      "https://marketplace.example/catalog",
+    ]);
+    assert.equal(requestOptions[0].headers["cache-control"], "no-cache");
+    assert.equal(requestOptions[0].cf.cacheTtl, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

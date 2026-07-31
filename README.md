@@ -110,6 +110,8 @@ There is no Marketplace section on your Worker home page. Do not look there for 
 2. Enter the service address and API key on your own OneAIWorkers page.
 3. Return to the chat. The connector is ready through `list_connectors` and `call_connector_tool`, even before the client refreshes its full tool list.
 
+These two permanent tools always read the live registry. Connector management is available under `connector_id: system`, Workers AI and agents under `connector_id: native`, and installed services under their own connector IDs.
+
 The API key never goes to the marketplace or central installer. OneAIWorkers encrypts it with `CREDENTIALS_MASTER_KEY` before saving it in D1.
 
 Developers can still create a direct HTTP connector with `save_connector`. That older method references Cloudflare Secrets by name and remains useful for private APIs and custom setups. See [Tools](docs/TOOLS.md).

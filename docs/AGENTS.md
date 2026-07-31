@@ -50,12 +50,14 @@ Every agent call is recorded in the shared D1 Neuron Meter with `run_id` and `ag
 
 ## Clients with a cached tool list
 
-Some MCP clients keep a frozen snapshot of top-level tools and do not expose new `agent_*` actions after the Worker is updated. OneAIWorkers supports two stable methods for those clients:
+Some MCP clients keep a frozen snapshot of top-level tools. OneAIWorkers keeps two permanent live methods for those clients:
 
 1. Call `list_connectors` with `include_actions: true`.
-2. Find the virtual connector with `connector_id: native`.
+2. Use `connector_id: system` for connector management, `connector_id: native` for AI and agents, or a saved connector's own ID.
 3. Select the required action and its `input_schema`.
-4. Call `call_connector_tool` with `connector_id: native` and the action name.
+4. Call `call_connector_tool` with that connector ID and action name.
+
+The gateway reads the current D1 connector registry on every call. Known system actions also work with `connector_id: native` for older cached clients.
 
 Example proposal without creating agents or consuming AI:
 

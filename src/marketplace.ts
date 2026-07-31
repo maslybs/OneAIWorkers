@@ -4,7 +4,6 @@ import { assertSafeOutboundUrl, safeKey } from "./security";
 import type { Env } from "./types";
 
 const DEFAULT_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog";
-const CATALOG_CACHE_MS = 10 * 60 * 1000;
 
 export interface MarketplaceTarget {
   id: string;
@@ -49,14 +48,6 @@ export interface InstalledPackageRow {
   installed_at: number;
   updated_at: number;
 }
-
-interface CatalogCache {
-  url: string;
-  expiresAt: number;
-  items: MarketplaceItem[];
-}
-
-let catalogCache: CatalogCache | null = null;
 
 export const findCapabilitySchema = {
   query: z.string().min(2).max(300).describe(biInline(
@@ -235,20 +226,20 @@ export async function listConnectorUpdates(env: Env, baseUrl: string) {
   };
 }
 
-export async function fetchMarketplaceCatalog(env: Env, force = false): Promise<MarketplaceItem[]> {
+export async function fetchMarketplaceCatalog(env: Env): Promise<MarketplaceItem[]> {
   const catalogUrl = catalogUrlFor(env);
-  if (!force && catalogCache?.url === catalogUrl && catalogCache.expiresAt > Date.now()) return catalogCache.items;
   const safeUrl = assertSafeOutboundUrl(catalogUrl);
   const response = await fetch(safeUrl.toString(), {
-    headers: { accept: "application/json" },
-    cf: { cacheTtl: 600, cacheEverything: true },
+    headers: {
+      accept: "application/json",
+      "cache-control": "no-cache",
+    },
+    cf: { cacheTtl: 0, cacheEverything: false },
   });
   if (!response.ok) throw new Error(`Marketplace catalog returned ${response.status}.`);
   const payload = await response.json() as { items?: unknown };
   if (!Array.isArray(payload.items)) throw new Error("Marketplace catalog has an invalid format.");
-  const items = payload.items.filter(isMarketplaceItem);
-  catalogCache = { url: catalogUrl, expiresAt: Date.now() + CATALOG_CACHE_MS, items };
-  return items;
+  return payload.items.filter(isMarketplaceItem);
 }
 
 export async function getMarketplaceItem(env: Env, itemId: string): Promise<{ item: MarketplaceItem; target: MarketplaceTarget } | null> {

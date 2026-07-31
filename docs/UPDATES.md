@@ -22,7 +22,7 @@ MCP cannot show a notification while the client is not using the Worker. A succe
 2. Sign in to Cloudflare.
 3. Select the account that owns the Worker.
 4. Confirm the update.
-5. Refresh or reconnect the MCP app after the update so it reloads the tool list.
+5. Return to the chat. The stable live gateway works without reconnecting. Refresh only if you want new top-level shortcut tools to appear.
 
 The update service verifies through Cloudflare that the Worker belongs to the selected account. It replaces only the Worker code. Existing D1 data, connector settings, bindings, and Cloudflare Secrets are preserved.
 

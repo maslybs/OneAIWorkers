@@ -63,4 +63,4 @@ Never place the access secret in the URL.
 
 ## After adding or changing a connector
 
-Refresh or reconnect the MCP server so the client reloads the tool list. Saved connector actions then appear as normal tools such as `n8n_list_workflows`.
+The connector is available immediately through `list_connectors` and `call_connector_tool`. Refreshing or reconnecting is optional and only adds top-level shortcuts such as `n8n_list_workflows`.

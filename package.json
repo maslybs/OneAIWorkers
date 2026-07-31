@@ -1,6 +1,6 @@
 {
   "name": "oneaiworkers",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": false,
   "description": "A small Cloudflare Worker remote MCP server for LLM-triggered actions.",
   "type": "module",

@@ -30,7 +30,13 @@ Creates a short-lived, one-time browser link for adding or changing a connector'
 
 ### `list_connectors` and `call_connector_tool`
 
-These are the stable discovery and invocation tools. They see newly installed connectors even when an MCP client has cached an older top-level tool list.
+These are the permanent live discovery and invocation tools. They read the current D1 registry on every call.
+
+- Use `connector_id: system` for installation, settings, updates, saving, testing, and deletion.
+- Use `connector_id: native` for current Workers AI and agent actions.
+- Saved connectors use their own `connector_id`.
+
+Known system actions also work through `native` for older clients. Refreshing the client is optional and only adds shortcut tools.
 
 ### `save_connector`
 

@@ -211,7 +211,10 @@ export default {
           stable_gateway: {
             discovery_tool: "list_connectors",
             invocation_tool: "call_connector_tool",
+            system_connector_id: "system",
             native_connector_id: "native",
+            connector_data_source: "D1_live",
+            client_refresh_required: false,
           },
           neuron_meter: {
             local_tracking_configured: Boolean(env.OAUTH_DB),
@@ -332,7 +335,8 @@ export default {
         if (!(await isMcpAuthorized(request, env))) return unauthorized(request, env);
         const server = await createMcpServer(env, request);
         const normalizedRequest = await normalizeMcpToolCallRequest(request);
-        return createMcpHandler(server, { enableJsonResponse: true })(normalizedRequest, env, ctx);
+        const response = await createMcpHandler(server, { enableJsonResponse: true })(normalizedRequest, env, ctx);
+        return withoutCaching(response);
       }
 
       if (url.pathname === "/robots.txt") {
@@ -345,3 +349,23 @@ export default {
     }
   },
 };
+
+function withoutCaching(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "no-store, max-age=0");
+  headers.set("pragma", "no-cache");
+  headers.set("expires", "0");
+  headers.set("vary", appendVary(headers.get("vary"), "authorization"));
+  headers.set("x-oneaiworkers-runtime", APP_VERSION);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function appendVary(current: string | null, value: string): string {
+  const values = new Set((current || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
+  values.add(value.toLowerCase());
+  return [...values].join(", ");
+}
