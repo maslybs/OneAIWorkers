@@ -39,6 +39,11 @@ const vaultHelpers = await import(pathToFileURL(path.join(outputDirectory, "vaul
 
 test.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
 
+test("routes protected child Worker calls through the public Cloudflare front door", () => {
+  const wranglerConfig = fs.readFileSync(path.join(root, "wrangler.toml"), "utf8");
+  assert.match(wranglerConfig, /compatibility_flags\s*=\s*\[[^\]]*"nodejs_compat"[^\]]*"global_fetch_strictly_public"[^\]]*\]/u);
+});
+
 test("home page names ChatGPT, Claude, and other MCP-compatible clients", () => {
   const html = homeHtmlHelpers.homeHtml({}, "https://worker.example");
   assert.match(html, /ChatGPT, Claude/u);

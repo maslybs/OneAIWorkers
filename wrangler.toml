@@ -4,7 +4,7 @@ compatibility_date = "2026-06-27"
 # Keep manually added dashboard Variables & Secrets when deploying with Wrangler.
 # Without this, Wrangler treats this file as the source of truth and removes dashboard-only variables.
 keep_vars = true
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # Native Workers AI binding. No API token or Account ID is required at runtime.
 [ai]

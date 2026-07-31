@@ -145,7 +145,7 @@ async function mcpRequest(baseUrl, accessToken, id, method, params = {}) {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
   assert.equal(response.headers.get("pragma"), "no-cache");
-  assert.equal(response.headers.get("x-oneaiworkers-runtime"), "0.9.6");
+  assert.equal(response.headers.get("x-oneaiworkers-runtime"), "0.9.7");
   assert.match(response.headers.get("vary") || "", /authorization/u);
   return response.json();
 }
@@ -265,7 +265,7 @@ test("OAuth uses S256, rotates refresh tokens, checks resource, revokes, and rat
   });
   assert.equal(liveRuntimeCall.result.isError, false);
   assert.equal(liveRuntimeCall.result.structuredContent.data.system, true);
-  assert.equal(liveRuntimeCall.result.structuredContent.data.result.version, "0.9.6");
+  assert.equal(liveRuntimeCall.result.structuredContent.data.result.version, "0.9.7");
   assert.equal(liveRuntimeCall.result.structuredContent.data.gateway_runtime.http_cache, "no-store");
 
   const cachedRouteCall = await mcpRequest(worker.baseUrl, issued.payload.access_token, 103, "tools/call", {
