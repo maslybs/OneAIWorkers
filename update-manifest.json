@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.9.5",
+  "latest_version": "0.9.6",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.9.5 fixes connector settings confirmation and checks new releases without stale raw GitHub content.",
-    "uk": "OneAIWorkers 0.9.5 виправляє підтвердження налаштувань конектора та перевіряє нові випуски без застарілого вмісту GitHub."
+    "en": "OneAIWorkers 0.9.6 fixes connector settings confirmation and checks new releases through the current GitHub API response.",
+    "uk": "OneAIWorkers 0.9.6 виправляє підтвердження налаштувань конектора та перевіряє нові випуски через актуальну відповідь GitHub API."
   }
 }

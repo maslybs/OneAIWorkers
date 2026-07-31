@@ -2,7 +2,7 @@ import { bilingualObject } from "./i18n";
 import { assertSafeOutboundUrl, fetchWithSafeRedirects } from "./security";
 import type { Env, UpdateNotice } from "./types";
 
-export const APP_VERSION = "0.9.5";
+export const APP_VERSION = "0.9.6";
 
 const DEFAULT_MANIFEST_URL = "https://api.github.com/repos/maslybs/OneAIWorkers/contents/update-manifest.json?ref=main";
 const MANIFEST_CACHE_MS = 60 * 1000;
@@ -136,6 +136,7 @@ async function getManifest(rawUrl: string): Promise<UpdateManifest | null> {
     const response = await fetchWithSafeRedirects(manifestUrl, {
       headers: {
         accept: "application/vnd.github.raw+json",
+        "user-agent": `OneAIWorkers/${APP_VERSION}`,
         "x-github-api-version": "2022-11-28",
       },
       signal: AbortSignal.timeout(2_500),
