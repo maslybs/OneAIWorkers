@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.9.4",
+  "latest_version": "0.9.5",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.9.4 accepts safe same-origin connector settings forms when a browser omits the Origin header, while continuing to block foreign websites.",
-    "uk": "OneAIWorkers 0.9.4 приймає безпечні форми налаштування конекторів, коли браузер не надсилає Origin, і далі блокує чужі сайти."
+    "en": "OneAIWorkers 0.9.5 fixes connector settings confirmation and checks new releases without stale raw GitHub content.",
+    "uk": "OneAIWorkers 0.9.5 виправляє підтвердження налаштувань конектора та перевіряє нові випуски без застарілого вмісту GitHub."
   }
 }

@@ -2,10 +2,10 @@ import { bilingualObject } from "./i18n";
 import { assertSafeOutboundUrl, fetchWithSafeRedirects } from "./security";
 import type { Env, UpdateNotice } from "./types";
 
-export const APP_VERSION = "0.9.4";
+export const APP_VERSION = "0.9.5";
 
-const DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/maslybs/OneAIWorkers/main/update-manifest.json";
-const MANIFEST_CACHE_MS = 6 * 60 * 60 * 1000;
+const DEFAULT_MANIFEST_URL = "https://api.github.com/repos/maslybs/OneAIWorkers/contents/update-manifest.json?ref=main";
+const MANIFEST_CACHE_MS = 60 * 1000;
 const FAILED_CACHE_MS = 5 * 60 * 1000;
 const MAX_MANIFEST_BYTES = 32_000;
 
@@ -134,7 +134,10 @@ async function getManifest(rawUrl: string): Promise<UpdateManifest | null> {
 
   try {
     const response = await fetchWithSafeRedirects(manifestUrl, {
-      headers: { accept: "application/json" },
+      headers: {
+        accept: "application/vnd.github.raw+json",
+        "x-github-api-version": "2022-11-28",
+      },
       signal: AbortSignal.timeout(2_500),
     });
     if (!response.ok) throw new Error(`Update manifest returned ${response.status}.`);
