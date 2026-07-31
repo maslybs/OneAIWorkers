@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.9.3",
+  "latest_version": "0.9.4",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.9.3 protects connector settings links from automatic link checks and opens them reliably after installation.",
-    "uk": "OneAIWorkers 0.9.3 захищає посилання на налаштування конекторів від автоматичних перевірок і надійно відкриває їх після встановлення."
+    "en": "OneAIWorkers 0.9.4 accepts safe same-origin connector settings forms when a browser omits the Origin header, while continuing to block foreign websites.",
+    "uk": "OneAIWorkers 0.9.4 приймає безпечні форми налаштування конекторів, коли браузер не надсилає Origin, і далі блокує чужі сайти."
   }
 }

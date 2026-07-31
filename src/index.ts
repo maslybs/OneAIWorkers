@@ -17,6 +17,7 @@ import { errorMessage, json, text } from "./response";
 import { APP_VERSION, getUpdateState, updateServiceStartUrl } from "./update";
 import { updatePageHtml } from "./update-page";
 import { normalizeMcpToolCallRequest } from "./mcp-request";
+import { isSameOriginFormRequest } from "./security";
 import { DAILY_NEURON_ALLOCATION, USD_PER_1000_NEURONS } from "./tools/neuron-meter";
 import {
   connectorAccessPageHtml,
@@ -118,7 +119,7 @@ export default {
             headers: connectorPageHeaders(),
           });
         }
-        if (request.headers.get("origin") !== new URL(baseUrl).origin) {
+        if (!isSameOriginFormRequest(request, baseUrl)) {
           return json({ ok: false, error: biInline("The request came from another website.", "Запит надійшов з іншого сайту.") }, { status: 403 });
         }
         const access = await consumeConnectorAccessToken(env, token);
@@ -152,7 +153,7 @@ export default {
         const existing = await loadCredentialProfile(env, connectorId, "user");
 
         if (request.method === "POST") {
-          if (request.headers.get("origin") !== new URL(baseUrl).origin) {
+          if (!isSameOriginFormRequest(request, baseUrl)) {
             return json({ ok: false, error: biInline("The request came from another website.", "Запит надійшов з іншого сайту.") }, { status: 403 });
           }
           try {

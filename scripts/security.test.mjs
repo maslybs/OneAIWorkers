@@ -55,6 +55,21 @@ test("connector settings links wait for an explicit same-site confirmation", () 
   assert.match(vaultHelpers.connectorSessionCookie("test-session"), /SameSite=Lax/u);
 });
 
+test("same-origin connector forms accept browser privacy headers without trusting foreign sites", () => {
+  const baseUrl = "https://worker.example";
+  const formRequest = (headers = {}, url = `${baseUrl}/connectors/access/token`) => new Request(url, {
+    method: "POST",
+    headers,
+  });
+
+  assert.equal(security.isSameOriginFormRequest(formRequest({ origin: baseUrl }), baseUrl), true);
+  assert.equal(security.isSameOriginFormRequest(formRequest({ "sec-fetch-site": "same-origin" }), baseUrl), true);
+  assert.equal(security.isSameOriginFormRequest(formRequest({ origin: "null", "sec-fetch-site": "same-origin" }), baseUrl), true);
+  assert.equal(security.isSameOriginFormRequest(formRequest(), baseUrl), false);
+  assert.equal(security.isSameOriginFormRequest(formRequest({ origin: "https://foreign.example", "sec-fetch-site": "cross-site" }), baseUrl), false);
+  assert.equal(security.isSameOriginFormRequest(formRequest({ "sec-fetch-site": "same-origin" }, "https://foreign.example/connectors/access/token"), baseUrl), false);
+});
+
 test("redacts secret values while preserving Cloudflare secret references", () => {
   const telegramToken = ["123456789", "ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghi"].join(":");
   const bearerToken = "bearer-value-that-must-never-be-returned";

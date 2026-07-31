@@ -76,6 +76,16 @@ export function safeKey(input: string): string {
   return value;
 }
 
+export function isSameOriginFormRequest(request: Request, baseUrl: string): boolean {
+  const expectedOrigin = new URL(baseUrl).origin;
+  if (new URL(request.url).origin !== expectedOrigin) return false;
+
+  const origin = request.headers.get("origin");
+  if (origin !== null && origin !== "null") return origin === expectedOrigin;
+
+  return request.headers.get("sec-fetch-site") === "same-origin";
+}
+
 export function redactUrlForOutput(url: URL): string {
   const safe = new URL(url.toString());
   for (const key of [...safe.searchParams.keys()]) {
