@@ -104,6 +104,8 @@ Find a connector that can inspect my n8n workflows and failed executions.
 
 OneAIWorkers downloads the public catalog and searches it inside your Worker. Your request is not sent to the marketplace. When a matching cloud connector exists, the client gives you a browser link.
 
+There is no Marketplace section on your Worker home page. Do not look there for a connector list: first name the service or required action in chat, and OneAIWorkers will check the real catalog through `find_capability`.
+
 1. Open the link and approve the installation in Cloudflare.
 2. Enter the service address and API key on your own OneAIWorkers page.
 3. Return to the chat. The connector is ready through `list_connectors` and `call_connector_tool`, even before the client refreshes its full tool list.
@@ -147,6 +149,7 @@ See [Updates](docs/UPDATES.md) for details.
 ```text
 hub_info
 connector_setup_status
+connector_installation_help
 find_capability
 list_connector_updates
 get_connector_settings_link

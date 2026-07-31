@@ -222,7 +222,20 @@ export default {
             reset_timezone: "UTC",
             account_total_available_without_api_token: false,
           },
-          recommended_first_tools: ["find_capability", "connector_setup_status", "list_connectors", "call_connector_tool", "test_connector"],
+          recommended_first_tools: ["connector_installation_help", "find_capability", "connector_setup_status", "list_connectors", "call_connector_tool", "test_connector"],
+          connector_installation: {
+            generic_help_tool: "connector_installation_help",
+            catalog_search_tool: "find_capability",
+            worker_home_has_marketplace_page: false,
+            availability_rule: bilingualObject(
+              "A connector is available only when find_capability returns it.",
+              "Конектор доступний лише тоді, коли його повернув find_capability.",
+            ),
+            credentials_rule: bilingualObject(
+              "Service credentials are entered only on the protected settings page of the user's own Worker, never in chat.",
+              "Ключі сервісу вводяться лише на захищеній сторінці власного Worker користувача, ніколи не в чаті.",
+            ),
+          },
           connector_engine: {
             storage: "D1",
             supported_http_methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -285,6 +298,7 @@ export default {
             "agent_run_cancel",
             "send_notification",
             "call_webhook",
+            "connector_installation_help",
             "find_capability",
             "list_connector_updates",
             "get_connector_settings_link",

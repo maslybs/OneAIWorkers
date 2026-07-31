@@ -104,6 +104,8 @@ Claude Desktop також можна підключити через `claude_des
 
 OneAIWorkers завантажить публічний каталог і виконає пошук усередині вашого Worker. Текст запиту не надсилається до каталогу. Якщо потрібний хмарний конектор існує, клієнт дасть посилання для браузера.
 
+На головній сторінці вашого Worker немає окремого розділу Marketplace. Не шукайте там список конекторів: спочатку назвіть у чаті сервіс або потрібну дію, а OneAIWorkers перевірить справжній каталог через `find_capability`.
+
 1. Відкрийте посилання та підтвердьте встановлення у Cloudflare.
 2. Введіть адресу сервісу й ключ на сторінці власного OneAIWorkers.
 3. Поверніться до чату. Конектор уже доступний через `list_connectors` і `call_connector_tool`, навіть якщо клієнт ще не оновив повний перелік дій.
@@ -147,6 +149,7 @@ https://ВАШ-WORKER.ВАШ-ПІДДОМЕН.workers.dev/update
 ```text
 hub_info
 connector_setup_status
+connector_installation_help
 find_capability
 list_connector_updates
 get_connector_settings_link

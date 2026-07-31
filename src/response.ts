@@ -23,6 +23,7 @@ export function text(data: string, init: ResponseInit = {}): Response {
 }
 
 export function mcpText(payload: ToolResultPayload) {
+  const browserAction = installBrowserAction(payload.data);
   const structuredContent = payload.update
     ? {
         user_action_required: true,
@@ -38,7 +39,16 @@ export function mcpText(payload: ToolResultPayload) {
         data: payload.data,
         message: payload.message,
       }
-    : payload;
+    : browserAction
+      ? {
+          ...payload,
+          user_action_required: true,
+          install_url: browserAction.url,
+          open_install_url_in_browser: true,
+          do_not_fetch_install_url_from_a_tool: true,
+          response_instruction: browserAction.response_instruction,
+        }
+      : payload;
   return {
     structuredContent,
     content: [
@@ -61,7 +71,18 @@ function summarizePayload(payload: ToolResultPayload): string {
   const result = !payload.ok
     ? payload.message || "Error / Помилка"
     : payload.message || JSON.stringify(payload, null, 2);
-  if (!payload.update) return result;
+  if (!payload.update) {
+    const browserAction = installBrowserAction(payload.data);
+    if (!browserAction) return result;
+    return [
+      browserAction.url,
+      "OPEN IN A NORMAL BROWSER / ВІДКРИЙТЕ У ЗВИЧАЙНОМУ БРАУЗЕРІ",
+      "Put this exact link at the very beginning of the user-facing reply. / Поставте це точне посилання на самому початку відповіді користувачу.",
+      "Do not open it with fetch_url or another server-side tool. / Не відкривайте його через fetch_url або інший серверний інструмент.",
+      "",
+      result,
+    ].join("\n");
+  }
 
   const importance = payload.update.critical
     ? "IMPORTANT SECURITY UPDATE / ВАЖЛИВЕ ОНОВЛЕННЯ БЕЗПЕКИ"
@@ -79,4 +100,18 @@ function summarizePayload(payload: ToolResultPayload): string {
     "",
     result,
   ].join("\n");
+}
+
+function installBrowserAction(data: unknown): { url: string; response_instruction: string } | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const action = (data as { browser_action?: unknown }).browser_action;
+  if (!action || typeof action !== "object" || Array.isArray(action)) return null;
+  const value = action as { type?: unknown; url?: unknown; response_instruction?: unknown };
+  if (value.type !== "install_connector" || typeof value.url !== "string" || !value.url.startsWith("https://")) return null;
+  return {
+    url: value.url,
+    response_instruction: typeof value.response_instruction === "string"
+      ? value.response_instruction
+      : "Open this connector installation link in a normal browser. / Відкрийте це посилання встановлення конектора у звичайному браузері.",
+  };
 }

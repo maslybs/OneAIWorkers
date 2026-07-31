@@ -12,9 +12,13 @@ Shows what OneAIWorkers can do and which optional services are configured.
 
 ## Marketplace connectors
 
+### `connector_installation_help`
+
+Use this when the user asks how to install a connector but has not named a service or required capability yet. It returns the real flow and prevents invented Marketplace sections or unverified connector claims.
+
 ### `find_capability`
 
-Finds a cloud connector for the user's task. It downloads the public catalog and ranks it inside the user's Worker, so the task text is not sent to the marketplace. A match includes a browser installation link.
+Finds a cloud connector for a named service or user task. It downloads the public catalog and ranks it inside the user's Worker, so the task text is not sent to the marketplace. A match includes the exact browser installation link. Only returned matches may be described as available.
 
 ### `list_connector_updates`
 

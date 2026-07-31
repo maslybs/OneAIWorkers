@@ -239,6 +239,7 @@ test("OAuth uses S256, rotates refresh tokens, checks resource, revokes, and rat
   const toolNames = listedTools.result.tools.map((item) => item.name);
   assert.ok(toolNames.includes("save_connector"));
   assert.ok(toolNames.includes("connector_setup_status"));
+  assert.ok(toolNames.includes("connector_installation_help"));
 
   const qualifiedToolCall = await mcpRequest(worker.baseUrl, issued.payload.access_token, 101, "tools/call", {
     name: "MyWork.connector_setup_status",

@@ -67,11 +67,55 @@ export const findCapabilitySchema = {
   language: z.enum(["en", "uk"]).default("en"),
 };
 
+export const connectorInstallationHelpSchema = {
+  language: z.enum(["en", "uk"]).default("en"),
+};
+
 export const connectorSettingsLinkSchema = {
   connector_id: z.string().min(2).max(80),
 };
 
 export const connectorUpdatesSchema = {};
+
+export function connectorInstallationHelp(
+  args: z.infer<z.ZodObject<typeof connectorInstallationHelpSchema>>,
+) {
+  const language = args.language || "en";
+  const ukrainian = language === "uk";
+  return {
+    ok: true,
+    exact_reply: ukrainian
+      ? "Назвіть сервіс або опишіть дію, для якої потрібен конектор. Я перевірю справжній каталог і, якщо знайду сумісний варіант, одразу дам точне посилання для встановлення у браузері."
+      : "Name the service or describe what the connector should do. I will check the real catalog and, if a compatible option exists, give you its exact browser installation link.",
+    installation_flow: [
+      ukrainian
+        ? "Після назви сервісу або задачі викликати find_capability."
+        : "After the service or task is known, call find_capability.",
+      ukrainian
+        ? "Називати конектор доступним лише тоді, коли find_capability повернув збіг."
+        : "Claim that a connector is available only when find_capability returns a match.",
+      ukrainian
+        ? "Поставити повернений install_url на початку відповіді й попросити відкрити його у звичайному браузері."
+        : "Put the returned install_url at the beginning of the reply and ask the user to open it in a normal browser.",
+      ukrainian
+        ? "Після встановлення браузер автоматично відкриє захищену сторінку власного OneAIWorkers для введення адреси сервісу та ключа."
+        : "After installation, the browser automatically opens a protected page on the user's own OneAIWorkers for the service address and key.",
+      ukrainian
+        ? "Повернутися до чату; list_connectors і call_connector_tool бачать конектор без обов’язкового перепідключення."
+        : "Return to the chat; list_connectors and call_connector_tool can use the connector without a required reconnect.",
+    ],
+    safety: {
+      worker_home_has_marketplace_page: false,
+      never_invent_catalog_items: true,
+      never_request_credentials_in_chat: true,
+      credentials_are_entered_on_the_users_worker: true,
+      manual_manifest_is_developer_mode_only: true,
+    },
+    response_instruction: ukrainian
+      ? "Не вигадуйте розділ Marketplace на головній сторінці Worker, назви конекторів або кроки OAuth. Якщо користувач ще не назвав сервіс чи задачу, дайте лише exact_reply."
+      : "Do not invent a Marketplace section on the Worker home page, connector names, or OAuth steps. If the user has not named a service or task yet, return only exact_reply.",
+  };
+}
 
 export async function ensureMarketplaceSchema(env: Env): Promise<void> {
   const db = getDb(env);
@@ -124,18 +168,38 @@ export async function findCapability(
       };
     });
 
+  const firstMatch = ranked[0];
   return {
     ok: true,
     query_kept_private: true,
+    available: Boolean(firstMatch),
     matches: ranked,
+    browser_action: firstMatch
+      ? {
+          type: "install_connector",
+          url: firstMatch.install_url,
+          open_in_normal_browser: true,
+          do_not_fetch_with_a_tool: true,
+          response_instruction: biInline(
+            `Put this exact link at the very beginning of the reply and do not claim that any unreturned connector exists: ${firstMatch.install_url}`,
+            `Поставте це точне посилання на самому початку відповіді й не стверджуйте, що існує будь-який конектор, якого немає в результаті: ${firstMatch.install_url}`,
+          ),
+        }
+      : null,
+    credential_next_step: firstMatch
+      ? biInline(
+          "After installation, the browser opens a protected settings page on the user's own OneAIWorkers. Never ask for the service key in chat.",
+          "Після встановлення браузер відкриє захищену сторінку налаштувань на власному OneAIWorkers користувача. Ніколи не просіть ключ сервісу в чаті.",
+        )
+      : null,
     next_step: ranked.length
       ? biInline(
           `Tell the user a matching connector is available and put this browser link first: ${ranked[0].install_url}`,
           `Скажіть користувачу, що потрібний конектор доступний, і поставте це посилання для браузера на початку відповіді: ${ranked[0].install_url}`,
         )
       : biInline(
-          "No compatible cloud connector was found in the marketplace.",
-          "У каталозі не знайдено сумісного хмарного конектора.",
+          "No compatible cloud connector was found in the marketplace. Do not invent alternatives. Offer developer mode only if the user asks for a custom integration.",
+          "У каталозі не знайдено сумісного хмарного конектора. Не вигадуйте альтернатив. Запропонуйте режим розробника лише якщо користувач просить власну інтеграцію.",
         ),
   };
 }

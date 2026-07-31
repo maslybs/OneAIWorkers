@@ -219,8 +219,43 @@ test("searches a downloaded marketplace catalog without sending the user query",
     );
     assert.equal(result.matches[0].connector_id, "n8n");
     assert.match(result.matches[0].install_url, /^https:\/\/worker\.example\/connectors\/install\/n8n/u);
+    assert.equal(result.available, true);
+    assert.equal(result.browser_action.type, "install_connector");
+    assert.equal(result.browser_action.url, result.matches[0].install_url);
+    assert.equal(result.browser_action.open_in_normal_browser, true);
+    assert.match(result.credential_next_step, /Never ask for the service key in chat/u);
     assert.deepEqual(requests, ["https://marketplace.example/catalog"]);
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("generic connector installation help prevents invented marketplace steps", () => {
+  const result = marketplaceHelpers.connectorInstallationHelp({ language: "uk" });
+  assert.equal(result.safety.worker_home_has_marketplace_page, false);
+  assert.equal(result.safety.never_invent_catalog_items, true);
+  assert.equal(result.safety.never_request_credentials_in_chat, true);
+  assert.match(result.exact_reply, /^Назвіть сервіс або опишіть дію/u);
+  assert.match(result.response_instruction, /Не вигадуйте розділ Marketplace/u);
+  assert.equal(result.installation_flow[0], "Після назви сервісу або задачі викликати find_capability.");
+});
+
+test("connector installation result puts the exact browser link first", () => {
+  const installUrl = "https://worker.example/connectors/install/n8n?lang=uk";
+  const result = responseHelpers.mcpText({
+    ok: true,
+    data: {
+      browser_action: {
+        type: "install_connector",
+        url: installUrl,
+        response_instruction: "Use the exact link.",
+      },
+      matches: [{ connector_id: "n8n", install_url: installUrl }],
+    },
+  });
+  assert.ok(result.content[0].text.startsWith(installUrl));
+  assert.equal(result.structuredContent.user_action_required, true);
+  assert.equal(result.structuredContent.install_url, installUrl);
+  assert.equal(result.structuredContent.open_install_url_in_browser, true);
+  assert.equal(result.structuredContent.do_not_fetch_install_url_from_a_tool, true);
 });

@@ -48,6 +48,8 @@ import { callConnectorTool, callConnectorToolSchema, connectorSetupStatus, conne
 import { APP_VERSION, getUpdateState, updateNotice } from "./update";
 import { createConnectorAccessToken } from "./vault";
 import {
+  connectorInstallationHelp,
+  connectorInstallationHelpSchema,
   connectorSettingsLinkSchema,
   connectorUpdatesSchema,
   findCapability,
@@ -68,6 +70,7 @@ const serverUpdateNotices = new WeakMap<McpServer, () => Promise<ReturnType<type
 const STATIC_TOOL_NAMES = [
   "hub_info",
   "connector_setup_status",
+  "connector_installation_help",
   "find_capability",
   "list_connector_updates",
   "get_connector_settings_link",
@@ -184,7 +187,20 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
         reset_timezone: "UTC",
         account_total_available_without_api_token: false,
       },
-      recommended_first_tools: ["find_capability", "connector_setup_status", "list_connectors", "call_connector_tool", ...connectorTools.slice(0, 6).map((item) => item.tool_name)],
+      recommended_first_tools: ["connector_installation_help", "find_capability", "connector_setup_status", "list_connectors", "call_connector_tool", ...connectorTools.slice(0, 6).map((item) => item.tool_name)],
+      connector_installation: {
+        generic_help_tool: "connector_installation_help",
+        catalog_search_tool: "find_capability",
+        worker_home_has_marketplace_page: false,
+        availability_rule: bilingualObject(
+          "Never claim that a connector exists until find_capability returns it.",
+          "Ніколи не стверджуйте, що конектор існує, доки його не повернув find_capability.",
+        ),
+        credentials_rule: bilingualObject(
+          "Never ask for service credentials in chat. The browser installer opens a protected settings page on the user's own Worker.",
+          "Ніколи не просіть ключі сервісу в чаті. Браузерний встановлювач відкриває захищену сторінку налаштувань на власному Worker користувача.",
+        ),
+      },
       tools: [...STATIC_TOOL_NAMES, ...connectorTools.map((item) => item.tool_name)],
       connector_tool_groups: groupConnectorTools(connectorTools),
       connector_tool_error: connectorToolError,
@@ -198,9 +214,13 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
   );
 
   tool(server, "connector_setup_status", "Connector setup status", bi("Checks connector engine readiness: D1, MCP protection, saved connectors, generated top-level tools, required secrets, missing secrets, service bindings, and optional integration flags. Run this before debugging any API connector.", "Перевіряє готовність connector engine: D1, MCP захист, збережені конектори, згенеровані top-level tools, потрібні secrets, відсутні secrets, service bindings і прапорці опційних інтеграцій. Запускайте перед дебагом будь-якого API connector."), connectorSetupStatusSchema, (args) => connectorSetupStatus(env, args), READ_ONLY);
+  tool(server, "connector_installation_help", "How to install a connector", bi(
+    "Always use this when the user asks how to add, connect, or install a connector without naming a specific service. Returns the exact current flow. Do not invent a Marketplace page on the Worker home page, connector availability, credential steps, or OAuth steps.",
+    "Завжди використовуйте це, коли користувач питає, як додати, підключити або встановити конектор, але не називає конкретний сервіс. Повертає точний поточний порядок. Не вигадуйте сторінку Marketplace на головній сторінці Worker, наявність конекторів, введення ключів або кроки OAuth.",
+  ), connectorInstallationHelpSchema, (args) => connectorInstallationHelp(args), READ_ONLY);
   tool(server, "find_capability", "Find a connector", bi(
-    "Searches the public marketplace for a cloud connector that can complete the user's task. The task text stays private inside this Worker: OneAIWorkers downloads the catalog and ranks it locally. If a match is found, put its install_url at the very beginning of the reply and tell the user to open it in a normal browser.",
-    "Шукає у публічному каталозі хмарний конектор для задачі користувача. Текст задачі лишається всередині цього Worker: OneAIWorkers завантажує каталог і порівнює варіанти локально. Якщо збіг знайдено, поставте install_url на самому початку відповіді та скажіть відкрити його у звичайному браузері.",
+    "Use this after the user names a service or required capability. Search the real public marketplace before claiming that any connector exists. The task text stays private inside this Worker. If a match is found, put its exact install_url at the very beginning of the reply and tell the user to open it in a normal browser. Never invent catalog items.",
+    "Використовуйте після того, як користувач назвав сервіс або потрібну можливість. Перевірте справжній публічний каталог, перш ніж стверджувати, що будь-який конектор існує. Текст задачі лишається всередині цього Worker. Якщо збіг знайдено, поставте точний install_url на самому початку відповіді та скажіть відкрити його у звичайному браузері. Ніколи не вигадуйте вміст каталогу.",
   ), findCapabilitySchema, (args) => findCapability(env, baseUrl, args), READ_EXTERNAL);
   tool(server, "list_connector_updates", "Check connector updates", bi(
     "Checks installed marketplace connectors for updates. If an update is available, put update_url at the beginning of the reply and tell the user to open it in a normal browser.",
