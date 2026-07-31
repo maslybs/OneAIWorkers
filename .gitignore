@@ -16,6 +16,7 @@ worker-configuration.d.ts
 
 # Build outputs / Артефакти збірки
 dist/
+release/
 build/
 .out/
 .cache/

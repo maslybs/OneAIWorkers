@@ -1,0 +1,76 @@
+name: Publish OneAIWorkers bundle
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/publish-worker-release.yml"
+      - "package-lock.json"
+      - "package.json"
+      - "scripts/build-release-bundle.mjs"
+      - "scripts/release-bundle.test.mjs"
+      - "src/**"
+      - "update-manifest.json"
+      - "wrangler.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: oneaiworkers-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify types
+        run: npm run typecheck
+
+      - name: Run tests and build release files
+        run: npm test
+
+      - name: Read version
+        id: release
+        run: |
+          VERSION="$(node -p 'require("./package.json").version')"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to replace an existing version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "Release v${VERSION} already exists. Increase the OneAIWorkers version before changing release code."
+            exit 1
+          fi
+
+      - name: Publish immutable Worker bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            release/oneaiworkers-worker.mjs \
+            release/oneaiworkers-worker.mjs.sha256 \
+            release/oneaiworkers-release.json \
+            --target "$GITHUB_SHA" \
+            --title "OneAIWorkers ${VERSION}" \
+            --notes "Verified OneAIWorkers ${VERSION} bundle for browser installation and updates."

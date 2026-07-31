@@ -37,3 +37,7 @@ https://raw.githubusercontent.com/maslybs/OneAIWorkers/main/update-manifest.json
 ```
 
 If this file cannot be reached, the normal MCP tools continue to work. Project owners can change the source with `UPDATE_MANIFEST_URL` or disable checks with `UPDATE_CHECK_ENABLED=false`.
+
+For every version, GitHub automatically publishes an immutable `oneaiworkers-worker.mjs` release bundle with release metadata and a SHA-256 checksum. The central installer contains no copy of OneAIWorkers. After the user approves an update, it downloads the release that matches `latest_version`, verifies it, and only then uploads the code to the user's Cloudflare account.
+
+Changing OneAIWorkers does not require rebuilding the installer. Increase the version in `package.json`, `APP_VERSION`, and `update-manifest.json`, then push the change to `main`. The GitHub release workflow runs the checks and publishes the matching bundle. An existing version tag is never replaced.
