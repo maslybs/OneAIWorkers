@@ -18,6 +18,24 @@ import { APP_VERSION, getUpdateState, updateServiceStartUrl } from "./update";
 import { updatePageHtml } from "./update-page";
 import { normalizeMcpToolCallRequest } from "./mcp-request";
 import { DAILY_NEURON_ALLOCATION, USD_PER_1000_NEURONS } from "./tools/neuron-meter";
+import {
+  connectorPageHeaders,
+  connectorInstallPageHtml,
+  connectorSetupPageHtml,
+  connectorUpdatePageHtml,
+  pageLanguage,
+} from "./connector-pages";
+import {
+  connectorSessionCookie,
+  consumeConnectorAccessToken,
+  loadCredentialProfile,
+  readConnectorSessionCookie,
+  sanitizeSubmittedCredentials,
+  storeCredentialProfile,
+  validateConnectorSession,
+} from "./vault";
+import { parseCredentialFields, registerInstalledConnector } from "./connector-installation";
+import { getInstalledPackage, getMarketplaceItem } from "./marketplace";
 
 export { AgentManager } from "./agents";
 
@@ -53,6 +71,99 @@ export default {
         const startUrl = updateServiceStartUrl(updateState, baseUrl);
         if (!startUrl) return Response.redirect(`${baseUrl}/update`, 303);
         return Response.redirect(startUrl, 303);
+      }
+
+      const connectorInstallMatch = url.pathname.match(/^\/connectors\/install\/([a-z0-9_-]+)$/);
+      if (connectorInstallMatch && request.method === "GET") {
+        const entry = await getMarketplaceItem(env, connectorInstallMatch[1]);
+        if (!entry) return json({ ok: false, error: biInline("Cloud connector not found.", "Хмарний конектор не знайдено.") }, { status: 404 });
+        const language = pageLanguage(url, request);
+        return new Response(connectorInstallPageHtml(env, baseUrl, entry.item, entry.target, language), {
+          headers: connectorPageHeaders(),
+        });
+      }
+
+      const connectorUpdateMatch = url.pathname.match(/^\/connectors\/([a-z0-9_-]+)\/update$/);
+      if (connectorUpdateMatch && request.method === "GET") {
+        const installed = await getInstalledPackage(env, connectorUpdateMatch[1]);
+        if (!installed) return json({ ok: false, error: biInline("Installed connector not found.", "Встановлений конектор не знайдено.") }, { status: 404 });
+        const entry = await getMarketplaceItem(env, installed.package_id);
+        if (!entry) return json({ ok: false, error: biInline("Cloud connector not found.", "Хмарний конектор не знайдено.") }, { status: 404 });
+        const language = pageLanguage(url, request);
+        return new Response(connectorUpdatePageHtml(env, baseUrl, entry.item, entry.target, installed, language), {
+          headers: connectorPageHeaders(),
+        });
+      }
+
+      if (url.pathname === "/connectors/complete" && request.method === "POST") {
+        const contentType = request.headers.get("content-type") || "";
+        if (!contentType.toLowerCase().includes("application/json")) {
+          return json({ ok: false, error: "Expected application/json." }, { status: 415 });
+        }
+        const contentLength = Number(request.headers.get("content-length") || 0);
+        if (contentLength > 256_000) return json({ ok: false, error: "Installation ticket is too large." }, { status: 413 });
+        const body = await request.json() as { ticket?: unknown };
+        if (typeof body.ticket !== "string") return json({ ok: false, error: "Installation ticket is required." }, { status: 400 });
+        if (body.ticket.length > 240_000) return json({ ok: false, error: "Installation ticket is too large." }, { status: 413 });
+        return json(await registerInstalledConnector(env, baseUrl, body.ticket));
+      }
+
+      const connectorAccessMatch = url.pathname.match(/^\/connectors\/access\/([A-Za-z0-9_-]{32,200})$/);
+      if (connectorAccessMatch && request.method === "GET") {
+        const token = connectorAccessMatch[1];
+        const language = pageLanguage(url, request);
+        const access = await consumeConnectorAccessToken(env, token);
+        const target = `${baseUrl}/connectors/${encodeURIComponent(access.connectorId)}/setup?lang=${language}`;
+        const headers = new Headers({
+          location: target,
+          "cache-control": "no-store",
+          "referrer-policy": "no-referrer",
+        });
+        headers.append("set-cookie", connectorSessionCookie(access.sessionToken));
+        headers.append("set-cookie", `oneaiworkers_lang=${language}; Path=/; Max-Age=31536000; Secure; SameSite=Lax`);
+        return new Response(null, {
+          status: 303,
+          headers,
+        });
+      }
+
+      const connectorSetupMatch = url.pathname.match(/^\/connectors\/([a-z0-9_-]+)\/setup$/);
+      if (connectorSetupMatch && (request.method === "GET" || request.method === "POST")) {
+        const connectorId = connectorSetupMatch[1];
+        const session = readConnectorSessionCookie(request);
+        if (!(await validateConnectorSession(env, connectorId, session))) {
+          return json({ ok: false, error: biInline("This settings link has expired. Ask your MCP client for a new settings link.", "Термін дії посилання минув. Попросіть MCP-клієнт створити нове посилання на налаштування.") }, { status: 401 });
+        }
+        const installed = await getInstalledPackage(env, connectorId);
+        if (!installed) return json({ ok: false, error: biInline("Installed connector not found.", "Встановлений конектор не знайдено.") }, { status: 404 });
+        const fields = parseCredentialFields(installed.credential_fields_json);
+        const entry = await getMarketplaceItem(env, installed.package_id);
+        const connectorName = entry?.item.name || installed.package_id;
+        const language = pageLanguage(url, request);
+        const existing = await loadCredentialProfile(env, connectorId, "user");
+
+        if (request.method === "POST") {
+          if (request.headers.get("origin") !== new URL(baseUrl).origin) {
+            return json({ ok: false, error: biInline("The request came from another website.", "Запит надійшов з іншого сайту.") }, { status: 403 });
+          }
+          try {
+            const form = await request.formData();
+            const values = sanitizeSubmittedCredentials(form, fields, existing);
+            await storeCredentialProfile(env, connectorId, "user", values);
+            return new Response(connectorSetupPageHtml(connectorName, fields, values, language, undefined, true), {
+              headers: connectorPageHeaders(),
+            });
+          } catch (error) {
+            return new Response(connectorSetupPageHtml(connectorName, fields, existing, language, errorMessage(error)), {
+              status: 400,
+              headers: connectorPageHeaders(),
+            });
+          }
+        }
+
+        return new Response(connectorSetupPageHtml(connectorName, fields, existing, language), {
+          headers: connectorPageHeaders(),
+        });
       }
 
       if (
@@ -111,7 +222,7 @@ export default {
             reset_timezone: "UTC",
             account_total_available_without_api_token: false,
           },
-          recommended_first_tools: ["connector_setup_status", "list_connectors", "call_connector_tool", "test_connector"],
+          recommended_first_tools: ["find_capability", "connector_setup_status", "list_connectors", "call_connector_tool", "test_connector"],
           connector_engine: {
             storage: "D1",
             supported_http_methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -174,6 +285,9 @@ export default {
             "agent_run_cancel",
             "send_notification",
             "call_webhook",
+            "find_capability",
+            "list_connector_updates",
+            "get_connector_settings_link",
             "save_connector",
             "list_connectors",
             "connector_setup_status",

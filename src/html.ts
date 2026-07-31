@@ -57,13 +57,15 @@ export function homeHtml(env: Env, baseUrl: string): string {
       <li>Supports GET, POST, PUT, PATCH, DELETE.</li>
       <li>Supports path/query/body templates such as <code>/workflows/{{id}}</code>.</li>
       <li>Supports API key, Bearer, Basic, OAuth refresh-token, OAuth client-credentials, and Google refresh-token style auth.</li>
-      <li>Secrets are referenced by name and should be stored in Cloudflare Secrets.</li>
+      <li>Marketplace connectors can be installed in a browser as protected child Workers.</li>
+      <li>Marketplace credentials are encrypted before D1 storage. Manual connectors can still reference Cloudflare Secrets by name.</li>
     </ul>
   </section>
 
   <section class="card">
     <h2>First MCP commands</h2>
-    <pre>connector_setup_status
+    <pre>find_capability { "query": "inspect n8n workflow failures" }
+connector_setup_status
 list_connectors { "include_actions": true }
 test_connector { "connector_id": "n8n", "action_name": "list_workflows" }</pre>
     <p class="muted">Run setup status first. It shows D1 readiness, saved connectors, required secrets, and missing secrets without exposing values.</p>

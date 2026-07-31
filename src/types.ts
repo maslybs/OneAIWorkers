@@ -11,6 +11,10 @@ export interface Env {
   UPDATE_CHECK_ENABLED?: string;
   UPDATE_MANIFEST_URL?: string;
   UPDATE_SERVICE_URL?: string;
+  MARKETPLACE_CATALOG_URL?: string;
+  CONNECTOR_INSTALLER_URL?: string;
+  CONNECTOR_INSTALLER_PUBLIC_KEY?: string;
+  CREDENTIALS_MASTER_KEY?: string;
 
   // D1 database used for OAuth, connector registry, and audit records.
   OAUTH_DB?: D1Database;

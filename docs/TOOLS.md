@@ -10,6 +10,28 @@ The AI assistant remembers, compares, and decides. The Worker only performs the 
 
 Shows what OneAIWorkers can do and which optional services are configured.
 
+## Marketplace connectors
+
+### `find_capability`
+
+Finds a cloud connector for the user's task. It downloads the public catalog and ranks it inside the user's Worker, so the task text is not sent to the marketplace. A match includes a browser installation link.
+
+### `list_connector_updates`
+
+Checks installed marketplace connectors and returns a browser update link when a newer package is available.
+
+### `get_connector_settings_link`
+
+Creates a short-lived, one-time browser link for adding or changing a connector's credentials. Never ask the user to send an API key in chat.
+
+### `list_connectors` and `call_connector_tool`
+
+These are the stable discovery and invocation tools. They see newly installed connectors even when an MCP client has cached an older top-level tool list.
+
+### `save_connector`
+
+Developer option for direct HTTP APIs. It stores the manifest in D1 and references Cloudflare Secrets by name. Ready marketplace packages do not require this manual step.
+
 ## Reading and checking
 
 ### `fetch_url`
@@ -63,7 +85,7 @@ Current template:
 
 - `webhook-forwarder`: forwards POST, PUT, and PATCH requests to a configured HTTPS endpoint.
 
-This is optional. It needs Cloudflare API credentials. It does not run arbitrary code.
+This is an older developer option. Marketplace child Workers use the browser installer and do not need permanent Cloudflare API credentials.
 
 ## Common workflow
 

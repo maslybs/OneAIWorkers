@@ -83,4 +83,5 @@ ChatGPT бачитиме `tg_getme`, а OneAIWorkers під капотом ви�
 - Child Workers за замовчуванням є internal execution backends.
 - Child Workers мають вимагати `x-oneaiworkers-child-token`, якщо доступні через URL.
 - Для private production child Workers використовуйте Service Bindings.
-- Усі tokens і API keys зберігайте як Cloudflare Secrets в основному Worker.
+- Для дочірніх Workers, створених вручну, зберігайте ключі як секрети Cloudflare.
+- Службові ключі дочірніх Workers із каталогу та ключі підключених сервісів основний Worker шифрує перед записом у D1.

@@ -1,6 +1,6 @@
 {
   "name": "oneaiworkers",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "private": false,
   "description": "A small Cloudflare Worker remote MCP server for LLM-triggered actions.",
   "type": "module",
@@ -53,6 +53,12 @@
       },
       "MCP_SHARED_SECRET": {
         "description": "Required. A private password that protects OAuth connection and manual MCP access. Generate a long random value and keep it secret."
+      },
+      "CREDENTIALS_MASTER_KEY": {
+        "description": "Required for marketplace connectors. A random Cloudflare Secret used to encrypt connector credentials before they are stored in D1."
+      },
+      "CONNECTOR_INSTALLER_PUBLIC_KEY": {
+        "description": "Public ECDSA key used to verify connector installation receipts signed by the official installer."
       }
     }
   }

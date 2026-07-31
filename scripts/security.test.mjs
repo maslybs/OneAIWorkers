@@ -16,6 +16,8 @@ await build({
     connectorTemplates: path.join(root, "src", "tools", "connectors", "templates.ts"),
     response: path.join(root, "src", "response.ts"),
     homeHtml: path.join(root, "src", "html.ts"),
+    crypto: path.join(root, "src", "crypto.ts"),
+    marketplace: path.join(root, "src", "marketplace.ts"),
   },
   bundle: true,
   format: "esm",
@@ -28,6 +30,8 @@ const connectorResponse = await import(pathToFileURL(path.join(outputDirectory, 
 const connectorTemplates = await import(pathToFileURL(path.join(outputDirectory, "connectorTemplates.js")));
 const responseHelpers = await import(pathToFileURL(path.join(outputDirectory, "response.js")));
 const homeHtmlHelpers = await import(pathToFileURL(path.join(outputDirectory, "homeHtml.js")));
+const cryptoHelpers = await import(pathToFileURL(path.join(outputDirectory, "crypto.js")));
+const marketplaceHelpers = await import(pathToFileURL(path.join(outputDirectory, "marketplace.js")));
 
 test.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
 
@@ -147,4 +151,76 @@ test("update notices lead with a browser link in text and structured content", (
   assert.equal(result.structuredContent.update_url, updateUrl);
   assert.equal(result.structuredContent.open_update_url_in_browser, true);
   assert.equal(result.structuredContent.do_not_fetch_update_url_from_a_tool, true);
+});
+
+test("encrypts connector credentials with authenticated context", async () => {
+  const masterKey = "test-master-key-with-more-than-thirty-two-characters";
+  const encrypted = await cryptoHelpers.encryptJson(masterKey, { api_key: "top-secret" }, "connector:n8n:user");
+  assert.notEqual(encrypted.ciphertext, "top-secret");
+  assert.deepEqual(
+    await cryptoHelpers.decryptJson(masterKey, encrypted, "connector:n8n:user"),
+    { api_key: "top-secret" },
+  );
+  await assert.rejects(
+    cryptoHelpers.decryptJson(masterKey, encrypted, "connector:other:user"),
+  );
+});
+
+test("verifies installer tickets with the matching ECDSA public key", async () => {
+  const pair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicDer = new Uint8Array(await crypto.subtle.exportKey("spki", pair.publicKey));
+  const publicPem = `-----BEGIN PUBLIC KEY-----\n${Buffer.from(publicDer).toString("base64")}\n-----END PUBLIC KEY-----`;
+  const payload = Buffer.from(JSON.stringify({ aud: "https://worker.example", nonce: "test" })).toString("base64url");
+  const signature = new Uint8Array(await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    pair.privateKey,
+    new TextEncoder().encode(payload),
+  ));
+  const verified = await cryptoHelpers.verifyEcdsaTicket(
+    publicPem,
+    `${payload}.${Buffer.from(signature).toString("base64url")}`,
+  );
+  assert.equal(verified.aud, "https://worker.example");
+});
+
+test("searches a downloaded marketplace catalog without sending the user query", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input) => {
+    requests.push(String(input));
+    return Response.json({
+      items: [{
+        id: "n8n",
+        type: "connector",
+        name: "n8n",
+        description: "Workflow automation",
+        version: "0.1.0",
+        capabilities: ["list workflows", "inspect executions"],
+        targets: [{
+          id: "cloudflare-worker",
+          runtime: "cloudflare-worker",
+          version: "0.1.0",
+          package_url: "https://marketplace.example/n8n",
+          package_format: "oneaiworkers.connector.v1",
+          checksum: "sha256:example",
+        }],
+      }],
+    });
+  };
+  try {
+    const result = await marketplaceHelpers.findCapability(
+      { MARKETPLACE_CATALOG_URL: "https://marketplace.example/catalog" },
+      "https://worker.example",
+      { query: "inspect workflow executions", limit: 5, language: "en" },
+    );
+    assert.equal(result.matches[0].connector_id, "n8n");
+    assert.match(result.matches[0].install_url, /^https:\/\/worker\.example\/connectors\/install\/n8n/u);
+    assert.deepEqual(requests, ["https://marketplace.example/catalog"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

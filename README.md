@@ -38,7 +38,7 @@ ChatGPT / Claude / another MCP client → your OneAIWorkers → your connectors 
 - No GitHub account is needed for the simple installation.
 - The Worker and its D1 database belong to the user.
 - The installer creates a private access secret automatically.
-- API keys stay in Cloudflare Secrets and are not saved in connector settings.
+- Keys for marketplace connectors are encrypted before they are stored in the user's D1 database.
 - Connector actions appear in ChatGPT, Claude, and other MCP clients as normal tools, such as `n8n_list_workflows`.
 - Updates keep the existing database, connectors, and secrets.
 
@@ -59,6 +59,7 @@ The installer automatically creates:
 - a native Workers AI binding;
 - a SQLite-backed Durable Object namespace for agents, teams, runs, budgets, and cancellation state;
 - `MCP_SHARED_SECRET` for private access.
+- `CREDENTIALS_MASTER_KEY`, kept as a Cloudflare Secret, for encrypting connector credentials.
 
 ## Connect an MCP client
 
@@ -93,29 +94,23 @@ The client should use `connector_setup_status`. It reports the database, saved c
 
 See [Client setup](docs/CLIENTS.md) for complete ChatGPT, Claude Desktop, and generic MCP examples.
 
-## Create a connector
+## Add a connector
 
-A connector stores an API address, available actions, and the **name** of the required Cloudflare secret. It does not store the secret value.
-
-For example, to connect n8n:
-
-1. Add the real n8n key to your Worker as a Cloudflare secret named `N8N_API_KEY`.
-2. Ask your AI client to create a read-only n8n connector for your n8n address.
-3. Ask it to test the connector with a dry run before making a real request.
-4. Refresh or reconnect the MCP app so the new connector actions appear in the tool list.
-
-The AI client saves the connector through `save_connector`. OneAIWorkers stores it in D1. The real API key remains in Cloudflare Secrets.
-
-Example request:
+Ask ChatGPT, Claude, or another MCP client for what you need:
 
 ```text
-Create a read-only n8n connector for https://example.com/api/v1.
-Use the X-N8N-API-KEY header and the Cloudflare secret named N8N_API_KEY.
-Add actions for listing workflows and executions.
-Test it with a dry run first.
+Find a connector that can inspect my n8n workflows and failed executions.
 ```
 
-For detailed connector fields and supported authentication types, see [Tools](docs/TOOLS.md).
+OneAIWorkers downloads the public catalog and searches it inside your Worker. Your request is not sent to the marketplace. When a matching cloud connector exists, the client gives you a browser link.
+
+1. Open the link and approve the installation in Cloudflare.
+2. Enter the service address and API key on your own OneAIWorkers page.
+3. Return to the chat. The connector is ready through `list_connectors` and `call_connector_tool`, even before the client refreshes its full tool list.
+
+The API key never goes to the marketplace or central installer. OneAIWorkers encrypts it with `CREDENTIALS_MASTER_KEY` before saving it in D1.
+
+Developers can still create a direct HTTP connector with `save_connector`. That older method references Cloudflare Secrets by name and remains useful for private APIs and custom setups. See [Tools](docs/TOOLS.md).
 
 ## Access protection
 
@@ -127,7 +122,8 @@ Keep these rules:
 
 - never put a secret in a URL;
 - never save a real API key inside a connector manifest;
-- store keys only as Cloudflare Secrets;
+- for manually created connectors, store keys only as Cloudflare Secrets;
+- for marketplace connectors, enter keys only on the settings page of your own Worker;
 - replace the access secret if it may have leaked.
 
 See [Security notes](docs/SECURITY.md) for more details.
@@ -151,6 +147,9 @@ See [Updates](docs/UPDATES.md) for details.
 ```text
 hub_info
 connector_setup_status
+find_capability
+list_connector_updates
+get_connector_settings_link
 save_connector
 list_connectors
 test_connector
@@ -176,7 +175,7 @@ Saved connector actions are also exposed as their own tools. For normal use, pre
 
 ## Advanced use
 
-OneAIWorkers can also create protected child Workers for tasks that need custom code or unusual logic. This is optional and requires additional Cloudflare permissions. Most API connections should use normal connectors.
+Marketplace connectors that need code run as separate protected child Workers. The browser installer creates them with temporary Cloudflare access and registers them automatically. Developers can still deploy and register their own child Workers manually.
 
 See:
 

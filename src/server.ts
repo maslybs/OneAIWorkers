@@ -46,6 +46,15 @@ import { callWebhook, callWebhookSchema, sendNotification, sendNotificationSchem
 import { createChildWorkerFromTemplate, createChildWorkerSchema, deployCustomChildWorker, deployCustomChildWorkerSchema } from "./tools/factory";
 import { callConnectorTool, callConnectorToolSchema, connectorSetupStatus, connectorSetupStatusSchema, deleteConnector, connectorIdSchema, listConnectorMcpTools, listConnectors, listConnectorsSchema, saveConnector, saveConnectorSchema, testConnector, testConnectorSchema, type ConnectorMcpTool } from "./tools/integrations";
 import { APP_VERSION, getUpdateState, updateNotice } from "./update";
+import { createConnectorAccessToken } from "./vault";
+import {
+  connectorSettingsLinkSchema,
+  connectorUpdatesSchema,
+  findCapability,
+  findCapabilitySchema,
+  getInstalledPackage,
+  listConnectorUpdates,
+} from "./marketplace";
 
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: ["mcp"] }] as const;
 
@@ -59,6 +68,9 @@ const serverUpdateNotices = new WeakMap<McpServer, () => Promise<ReturnType<type
 const STATIC_TOOL_NAMES = [
   "hub_info",
   "connector_setup_status",
+  "find_capability",
+  "list_connector_updates",
+  "get_connector_settings_link",
   "save_connector",
   "list_connectors",
   "test_connector",
@@ -172,7 +184,7 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
         reset_timezone: "UTC",
         account_total_available_without_api_token: false,
       },
-      recommended_first_tools: ["connector_setup_status", "list_connectors", "call_connector_tool", ...connectorTools.slice(0, 6).map((item) => item.tool_name)],
+      recommended_first_tools: ["find_capability", "connector_setup_status", "list_connectors", "call_connector_tool", ...connectorTools.slice(0, 6).map((item) => item.tool_name)],
       tools: [...STATIC_TOOL_NAMES, ...connectorTools.map((item) => item.tool_name)],
       connector_tool_groups: groupConnectorTools(connectorTools),
       connector_tool_error: connectorToolError,
@@ -186,6 +198,33 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
   );
 
   tool(server, "connector_setup_status", "Connector setup status", bi("Checks connector engine readiness: D1, MCP protection, saved connectors, generated top-level tools, required secrets, missing secrets, service bindings, and optional integration flags. Run this before debugging any API connector.", "Перевіряє готовність connector engine: D1, MCP захист, збережені конектори, згенеровані top-level tools, потрібні secrets, відсутні secrets, service bindings і прапорці опційних інтеграцій. Запускайте перед дебагом будь-якого API connector."), connectorSetupStatusSchema, (args) => connectorSetupStatus(env, args), READ_ONLY);
+  tool(server, "find_capability", "Find a connector", bi(
+    "Searches the public marketplace for a cloud connector that can complete the user's task. The task text stays private inside this Worker: OneAIWorkers downloads the catalog and ranks it locally. If a match is found, put its install_url at the very beginning of the reply and tell the user to open it in a normal browser.",
+    "Шукає у публічному каталозі хмарний конектор для задачі користувача. Текст задачі лишається всередині цього Worker: OneAIWorkers завантажує каталог і порівнює варіанти локально. Якщо збіг знайдено, поставте install_url на самому початку відповіді та скажіть відкрити його у звичайному браузері.",
+  ), findCapabilitySchema, (args) => findCapability(env, baseUrl, args), READ_EXTERNAL);
+  tool(server, "list_connector_updates", "Check connector updates", bi(
+    "Checks installed marketplace connectors for updates. If an update is available, put update_url at the beginning of the reply and tell the user to open it in a normal browser.",
+    "Перевіряє оновлення встановлених конекторів. Якщо оновлення є, поставте update_url на початку відповіді та скажіть користувачу відкрити його у звичайному браузері.",
+  ), connectorUpdatesSchema, () => listConnectorUpdates(env, baseUrl), READ_EXTERNAL);
+  tool(server, "get_connector_settings_link", "Open connector settings", bi(
+    "Creates a short-lived, one-time browser link for securely adding or changing a connector's credentials. Put settings_url at the beginning of the reply. Never ask the user to send API keys in chat.",
+    "Створює короткочасне одноразове посилання для безпечного додавання або зміни ключів конектора. Поставте settings_url на початку відповіді. Ніколи не просіть користувача надсилати API-ключі в чат.",
+  ), connectorSettingsLinkSchema, async (args) => {
+    const installed = await getInstalledPackage(env, args.connector_id);
+    if (!installed) throw new Error(biInline("Installed marketplace connector not found.", "Встановлений конектор із каталогу не знайдено."));
+    const token = await createConnectorAccessToken(env, installed.connector_id);
+    const settingsUrl = `${baseUrl}/connectors/access/${encodeURIComponent(token)}`;
+    return {
+      ok: true,
+      connector_id: installed.connector_id,
+      settings_url: settingsUrl,
+      expires_in_seconds: 600,
+      response_instruction: biInline(
+        `Put this link first and tell the user to open it in a normal browser: ${settingsUrl}`,
+        `Поставте це посилання першим і скажіть користувачу відкрити його у звичайному браузері: ${settingsUrl}`,
+      ),
+    };
+  }, WRITE_INTERNAL);
   tool(server, "list_connectors", "List connector actions", bi("Stable discovery gateway. Lists saved D1 connectors and the virtual native connector. Set include_actions=true to discover current AI, agent, and API actions with their input schemas even when the MCP client has a frozen top-level tool snapshot.", "Стабільний discovery gateway. Показує збережені D1 connectors і віртуальний native connector. Встановіть include_actions=true, щоб отримати актуальні AI, agent та API actions з input schemas навіть коли MCP-клієнт має заморожений snapshot top-level tools."), listConnectorsSchema, (args) => listConnectors(env, args), READ_ONLY);
   tool(server, "save_connector", "Save API connector", bi("Creates or updates an API connector manifest. After saving, actions are exposed as top-level OneAIWorkers tools on the next MCP tools/list refresh, for example tg_getme or n8n_list_workflows. Secrets must be referenced by Cloudflare secret name, never placed directly in the manifest.", "Створює або оновлює API connector manifest. Після збереження actions показуються як top-level OneAIWorkers tools при наступному MCP tools/list refresh, наприклад tg_getme або n8n_list_workflows. Secrets треба вказувати тільки за назвою Cloudflare secret, ніколи не вставляти значення напряму в manifest."), saveConnectorSchema, (args) => saveConnector(env, args), WRITE_EXTERNAL);
   tool(server, "test_connector", "Test connector action", bi("Tests a saved connector action. Defaults to dry_run=true, which prepares the HTTP request without calling the external API. Use this before real calls or when a generated top-level tool fails.", "Тестує збережену дію connector. За замовчуванням dry_run=true: готує HTTP запит без виклику зовнішнього API. Використовуйте перед реальними викликами або коли generated top-level tool падає."), testConnectorSchema, (args) => testConnector(env, args), READ_EXTERNAL);
@@ -400,6 +439,9 @@ function configuredFlags(env: Env) {
     default_webhook: Boolean(env.DEFAULT_WEBHOOK_URL),
     workers_ai: Boolean(env.AI),
     agent_manager: Boolean(env.AGENT_MANAGER),
+    encrypted_credentials: Boolean(env.CREDENTIALS_MASTER_KEY),
+    connector_installer_signature: Boolean(env.CONNECTOR_INSTALLER_PUBLIC_KEY),
+    marketplace: Boolean(env.MARKETPLACE_CATALOG_URL || env.CONNECTOR_INSTALLER_URL),
     worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
   };
 }

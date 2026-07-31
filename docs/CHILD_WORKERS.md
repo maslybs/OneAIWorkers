@@ -83,4 +83,5 @@ Direct child Worker access is optional and should be treated as a plain API endp
 - Child Workers are internal execution backends by default.
 - Child Workers must require `x-oneaiworkers-child-token` when accessed by URL.
 - Use Service Bindings for private production child Workers.
-- Store all tokens and API keys as Cloudflare Secrets on the main Worker.
+- For manual child Workers, store tokens as Cloudflare Secrets.
+- Marketplace child tokens and service credentials are encrypted by the main Worker before D1 storage.

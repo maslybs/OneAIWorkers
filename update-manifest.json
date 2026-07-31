@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.8.1",
+  "latest_version": "0.9.0",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.8.1 fixes Neuron Meter D1 schema initialization by executing each complete CREATE statement separately. This resolves the production SQLITE_ERROR incomplete input failure in ai_neuron_status and metered AI calls.",
-    "uk": "OneAIWorkers 0.8.1 виправляє ініціалізацію D1 schema для Neuron Meter: кожен повний CREATE statement тепер виконується окремо. Це усуває production-помилку SQLITE_ERROR incomplete input в ai_neuron_status і metered AI calls."
+    "en": "OneAIWorkers 0.9.0 adds private marketplace search, browser installation and updates for cloud connectors, encrypted connector credentials, and the first full n8n child Worker package.",
+    "uk": "OneAIWorkers 0.9.0 додає приватний пошук у каталозі, встановлення й оновлення хмарних конекторів через браузер, зашифроване зберігання ключів та перший повний дочірній Worker для n8n."
   }
 }

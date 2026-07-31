@@ -50,6 +50,7 @@ export interface ConnectorRow {
   child_worker_url: string | null;
   child_worker_binding: string | null;
   child_worker_token_secret: string | null;
+  child_worker_token_credential: string | null;
   enabled: number;
   created_at: number;
   updated_at: number;

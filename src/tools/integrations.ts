@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { deleteConnectorCredentials, loadCredentialProfile } from "../vault";
+import { ensureMarketplaceSchema, getInstalledPackage } from "../marketplace";
 import { biInline } from "../i18n";
 import { assertSafeOutboundUrl, redactSensitiveText, redactSensitiveValue, redactUrlForOutput, safeKey } from "../security";
 import type { Env } from "../types";
@@ -32,6 +34,7 @@ export const saveConnectorSchema = {
   child_worker_url: z.string().url().optional().describe(biInline("Advanced mode fallback. Protected HTTPS URL of the child Worker. Users should still call it through the main gateway by default.", "Fallback для розширеного режиму. Захищений HTTPS URL child Worker. Користувачі за замовчуванням все одно мають викликати його через основний gateway.")),
   child_worker_binding: z.string().min(2).max(80).optional().describe(biInline("Advanced production mode. Cloudflare Service Binding name for a private child Worker, for example TELEGRAM_CHILD.", "Production-режим. Назва Cloudflare Service Binding для приватного child Worker, наприклад TELEGRAM_CHILD.")),
   child_worker_token_secret: z.string().min(2).max(80).optional().describe(biInline("Secret name that stores the internal token for the child Worker URL/binding, if the child requires it.", "Назва secret, де зберігається внутрішній token для child Worker URL/binding, якщо child його вимагає.")),
+  child_worker_token_credential: z.string().min(2).max(80).optional().describe(biInline("Managed encrypted credential key for an installed child Worker.", "Ключ зашифрованого службового значення для встановленого дочірнього Worker.")),
   actions: z.array(actionSchema).min(1).max(50).describe(biInline("Actions exposed by this connector.", "Дії, які надає цей конектор.")),
 };
 
@@ -132,6 +135,7 @@ export async function ensureConnectorSchema(env: Env): Promise<void> {
           child_worker_url TEXT,
           child_worker_binding TEXT,
           child_worker_token_secret TEXT,
+          child_worker_token_credential TEXT,
           enabled INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
@@ -163,6 +167,7 @@ export async function ensureConnectorSchema(env: Env): Promise<void> {
       ];
       for (const sql of statements) await db.prepare(sql).run();
       await ensureColumn(db, "connectors", "child_worker_binding", "TEXT");
+      await ensureColumn(db, "connectors", "child_worker_token_credential", "TEXT");
     })().catch((error) => {
       schemaReady = null;
       throw error;
@@ -177,6 +182,8 @@ export async function connectorSetupStatus(env: Env, args: z.infer<z.ZodObject<t
     mcp_shared_secret: Boolean(env.MCP_SHARED_SECRET),
     workers_ai: Boolean(env.AI),
     agent_manager: Boolean(env.AGENT_MANAGER),
+    encrypted_credentials: Boolean(env.CREDENTIALS_MASTER_KEY),
+    marketplace: Boolean(env.MARKETPLACE_CATALOG_URL || env.CONNECTOR_INSTALLER_URL),
     worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
     notifications: {
       telegram: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
@@ -223,11 +230,16 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
   }
   const now = nowSeconds();
   const mode = args.mode || "internal";
-  if (mode === "child_worker") validateChildWorkerConfig(args.child_worker_url, args.child_worker_binding, args.child_worker_token_secret);
+  if (mode === "child_worker") validateChildWorkerConfig(
+    args.child_worker_url,
+    args.child_worker_binding,
+    args.child_worker_token_secret,
+    args.child_worker_token_credential,
+  );
 
   const statements: D1PreparedStatement[] = [db.prepare(
-    `INSERT INTO connectors (connector_id, name, description, mode, child_worker_url, child_worker_binding, child_worker_token_secret, enabled, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `INSERT INTO connectors (connector_id, name, description, mode, child_worker_url, child_worker_binding, child_worker_token_secret, child_worker_token_credential, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
      ON CONFLICT(connector_id) DO UPDATE SET
        name = excluded.name,
        description = excluded.description,
@@ -235,9 +247,21 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
        child_worker_url = excluded.child_worker_url,
        child_worker_binding = excluded.child_worker_binding,
        child_worker_token_secret = excluded.child_worker_token_secret,
+       child_worker_token_credential = excluded.child_worker_token_credential,
        enabled = 1,
        updated_at = excluded.updated_at`,
-  ).bind(connectorId, args.name, args.description || null, mode, args.child_worker_url || null, args.child_worker_binding || null, args.child_worker_token_secret || null, now, now)];
+  ).bind(
+    connectorId,
+    args.name,
+    args.description || null,
+    mode,
+    args.child_worker_url || null,
+    args.child_worker_binding || null,
+    args.child_worker_token_secret || null,
+    args.child_worker_token_credential || null,
+    now,
+    now,
+  )];
   statements.push(db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId));
   statements.push(...args.actions.map((action) => prepareConnectorAction(db, connectorId, action, now)));
   statements.push(db.prepare(
@@ -268,6 +292,20 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
   const rows = await db.prepare("SELECT * FROM connectors WHERE enabled = 1 ORDER BY connector_id").all<ConnectorRow>();
   for (const row of rows.results || []) {
     const item: JsonObject = publicConnector(row);
+    const installedPackage = await getInstalledPackage(env, row.connector_id);
+    if (installedPackage) {
+      const fields = parseJson<Array<{ id?: unknown; required?: unknown }>>(installedPackage.credential_fields_json, []);
+      const credentials = env.CREDENTIALS_MASTER_KEY
+        ? await loadCredentialProfile(env, row.connector_id, "user")
+        : {};
+      item.marketplace_package = {
+        package_id: installedPackage.package_id,
+        installed_version: installedPackage.installed_version,
+        credentials_configured: fields.every((field) =>
+          field.required !== true || (typeof field.id === "string" && Boolean(credentials[field.id]?.trim()))
+        ),
+      };
+    }
     if (args.include_actions) item.actions = await listActionsForConnector(env, db, row.connector_id);
     connectors.push(item);
   }
@@ -286,6 +324,9 @@ export async function deleteConnector(env: Env, args: z.infer<z.ZodObject<typeof
   await ensureConnectorSchema(env);
   await db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId).run();
   await db.prepare("DELETE FROM connectors WHERE connector_id = ?").bind(connectorId).run();
+  await ensureMarketplaceSchema(env);
+  await db.prepare("DELETE FROM connector_packages WHERE connector_id = ?").bind(connectorId).run();
+  await deleteConnectorCredentials(env, connectorId);
   await audit(db, connectorId, null, "delete_connector", true, "Deleted connector");
   return { ok: true, connector_id: connectorId };
 }
@@ -437,8 +478,17 @@ function buildRequestBody(action: ActionRow, input: JsonObject, method: string, 
 async function callChildWorkerConnector(env: Env, connector: ConnectorRow, actionName: string, input: JsonObject, dryRun: boolean) {
   const headers = new Headers({ "content-type": "application/json; charset=utf-8" });
   if (connector.child_worker_token_secret) headers.set("x-oneaiworkers-child-token", getSecret(env, connector.child_worker_token_secret));
+  if (connector.child_worker_token_credential) {
+    const systemCredentials = await loadCredentialProfile(env, connector.connector_id, "system");
+    const childToken = systemCredentials[connector.child_worker_token_credential];
+    if (!childToken) throw new Error(biInline("The child Worker access token is missing.", "Немає ключа доступу до дочірнього Worker."));
+    headers.set("x-oneaiworkers-child-token", childToken);
+  }
 
-  const payload = { name: actionName, arguments: input, dry_run: dryRun };
+  const credentials = env.CREDENTIALS_MASTER_KEY
+    ? await loadCredentialProfile(env, connector.connector_id, "user")
+    : {};
+  const payload = { name: actionName, arguments: input, credentials, dry_run: dryRun };
   const body = JSON.stringify(payload);
 
   if (connector.child_worker_binding) {
@@ -505,16 +555,24 @@ function isServiceBindingConfigured(env: Env, name: string): boolean {
   }
 }
 
-function validateChildWorkerConfig(childWorkerUrl?: string, childWorkerBinding?: string, childWorkerTokenSecret?: string): void {
+function validateChildWorkerConfig(
+  childWorkerUrl?: string,
+  childWorkerBinding?: string,
+  childWorkerTokenSecret?: string,
+  childWorkerTokenCredential?: string,
+): void {
   if (!childWorkerUrl && !childWorkerBinding) {
     throw new Error(biInline("child_worker_url or child_worker_binding is required for child_worker mode.", "Для режиму child_worker потрібен child_worker_url або child_worker_binding."));
   }
   if (childWorkerUrl) assertSafeOutboundUrl(childWorkerUrl);
   if (childWorkerBinding) validateBindingName(childWorkerBinding);
-  if (childWorkerUrl && !childWorkerBinding && !childWorkerTokenSecret) {
-    throw new Error(biInline("child_worker_token_secret is required when child_worker_url is used without a Service Binding.", "child_worker_token_secret потрібен, коли child_worker_url використовується без Service Binding."));
+  if (childWorkerUrl && !childWorkerBinding && !childWorkerTokenSecret && !childWorkerTokenCredential) {
+    throw new Error(biInline("A child Worker access token is required for a public child URL.", "Для публічної адреси дочірнього Worker потрібен ключ доступу."));
   }
   if (childWorkerTokenSecret) validateSecretName(childWorkerTokenSecret);
+  if (childWorkerTokenCredential && !/^[a-z][a-z0-9_]{1,79}$/.test(childWorkerTokenCredential)) {
+    throw new Error(biInline("Managed credential key has an invalid format.", "Ключ керованого службового значення має неправильний формат."));
+  }
 }
 
 function validateBindingName(name: string): void {
@@ -544,6 +602,7 @@ function publicConnector(row: ConnectorRow) {
     child_worker_binding: row.child_worker_binding || null,
     direct_child_url_available: Boolean(row.child_worker_url),
     child_worker_token_secret: row.child_worker_token_secret || null,
+    managed_child_token: Boolean(row.child_worker_token_credential),
     enabled: Boolean(row.enabled),
     updated_at: row.updated_at,
   };
