@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.9.7",
+  "latest_version": "0.9.8",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.9.7 allows the main Worker to call protected child Workers in the same Cloudflare account without error 1042.",
-    "uk": "OneAIWorkers 0.9.7 дозволяє основному Worker викликати захищені дочірні Worker у тому самому обліковому записі Cloudflare без помилки 1042."
+    "en": "OneAIWorkers 0.9.8 discovers only strictly compatible Cloudflare connector packages from the universal marketplace.",
+    "uk": "OneAIWorkers 0.9.8 знаходить в універсальному маркетплейсі лише суворо сумісні хмарні пакунки конекторів."
   }
 }

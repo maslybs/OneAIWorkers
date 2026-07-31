@@ -227,22 +227,54 @@ test("searches a downloaded marketplace catalog without sending the user query",
     requests.push(String(input));
     requestOptions.push(init);
     return Response.json({
-      items: [{
-        id: "n8n",
-        type: "connector",
-        name: "n8n",
-        description: "Workflow automation",
-        version: "0.1.0",
-        capabilities: ["list workflows", "inspect executions"],
-        targets: [{
-          id: "cloudflare-worker",
-          runtime: "cloudflare-worker",
+      items: [
+        {
+          id: "n8n",
+          type: "connector",
+          name: "n8n",
+          description: "Workflow automation",
           version: "0.1.0",
-          package_url: "https://marketplace.example/n8n",
-          package_format: "oneaiworkers.connector.v1",
-          checksum: "sha256:example",
-        }],
-      }],
+          capabilities: ["list workflows", "inspect executions"],
+          targets: [{
+            id: "cloudflare-worker",
+            runtime: "cloudflare-worker",
+            version: "0.1.0",
+            package_url: "https://marketplace.example/n8n",
+            package_format: "oneaiworkers.connector.v1",
+            checksum: "sha256:example",
+          }],
+        },
+        {
+          id: "local-only",
+          type: "connector",
+          name: "Local only",
+          description: "Inspect workflow executions locally",
+          version: "0.1.0",
+          targets: [{
+            id: "local",
+            runtime: "local",
+            version: "0.1.0",
+            package_url: "https://marketplace.example/local",
+            package_format: "oneaihub.connector.v1",
+            checksum: "sha256:local",
+          }],
+        },
+        {
+          id: "mislabeled",
+          type: "connector",
+          name: "Mislabeled cloud package",
+          description: "Inspect workflow executions",
+          version: "0.1.0",
+          targets: [{
+            id: "cloudflare-worker",
+            runtime: "local",
+            version: "0.1.0",
+            package_url: "https://marketplace.example/mislabeled",
+            package_format: "oneaihub.connector.v1",
+            checksum: "sha256:mislabeled",
+          }],
+        },
+      ],
     });
   };
   try {
@@ -252,6 +284,7 @@ test("searches a downloaded marketplace catalog without sending the user query",
       { query: "inspect workflow executions", limit: 5, language: "en" },
     );
     assert.equal(result.matches[0].connector_id, "n8n");
+    assert.deepEqual(result.matches.map((match) => match.connector_id), ["n8n"]);
     assert.match(result.matches[0].install_url, /^https:\/\/worker\.example\/connectors\/install\/n8n/u);
     assert.equal(result.available, true);
     assert.equal(result.browser_action.type, "install_connector");
@@ -263,9 +296,15 @@ test("searches a downloaded marketplace catalog without sending the user query",
       "https://worker.example",
       { query: "inspect workflow executions", limit: 5, language: "en" },
     );
+    await marketplaceHelpers.findCapability(
+      {},
+      "https://worker.example",
+      { query: "inspect workflow executions", limit: 5, language: "en" },
+    );
     assert.deepEqual(requests, [
       "https://marketplace.example/catalog",
       "https://marketplace.example/catalog",
+      "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker&type=connector",
     ]);
     assert.equal(requestOptions[0].headers["cache-control"], "no-cache");
     assert.equal(requestOptions[0].cf.cacheTtl, 0);

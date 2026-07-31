@@ -27,7 +27,7 @@ database_id = "ebb15e8a-1131-4c27-b5ff-6914340deb2a"
 
 [vars]
 HUB_NAME = "OneAIWorkers"
-MARKETPLACE_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog"
+MARKETPLACE_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker&type=connector"
 CONNECTOR_INSTALLER_URL = "https://workers.bgdn.dev"
 # Update checks use the official manifest by default. These values are optional overrides.
 # UPDATE_CHECK_ENABLED = "true"

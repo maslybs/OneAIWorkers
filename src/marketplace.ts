@@ -3,7 +3,7 @@ import { biInline } from "./i18n";
 import { assertSafeOutboundUrl, safeKey } from "./security";
 import type { Env } from "./types";
 
-const DEFAULT_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog";
+const DEFAULT_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker&type=connector";
 
 export interface MarketplaceTarget {
   id: string;
@@ -319,8 +319,8 @@ export async function consumeInstallNonce(env: Env, nonce: string, expiresAt: nu
 export function cloudTarget(item: MarketplaceItem): MarketplaceTarget | null {
   const targets = Array.isArray(item.targets) ? item.targets : Object.values(item.targets || {});
   const target = targets.find((candidate) =>
-    candidate?.runtime === "cloudflare-worker" ||
-    candidate?.id === "cloudflare-worker" ||
+    candidate?.id === "cloudflare-worker" &&
+    candidate?.runtime === "cloudflare-worker" &&
     candidate?.package_format === "oneaiworkers.connector.v1"
   );
   if (!target || !isMarketplaceTarget(target)) return null;
