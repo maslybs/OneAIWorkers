@@ -71,6 +71,33 @@ export function connectorUpdatePageHtml(
   `);
 }
 
+export function connectorAccessPageHtml(language: Language): string {
+  const copy = language === "uk"
+    ? {
+        eyebrow: "Захищене посилання",
+        title: "Відкрити налаштування конектора",
+        body: "Натисніть кнопку, щоб використати одноразове посилання та перейти до введення ключа сервісу.",
+        action: "Продовжити до налаштувань",
+        safety: "До натискання кнопки посилання не використовується. Це захищає його від автоматичних перевірок у чатах і браузерах.",
+      }
+    : {
+        eyebrow: "Protected link",
+        title: "Open connector settings",
+        body: "Continue to use this one-time link and enter the service credentials securely.",
+        action: "Continue to settings",
+        safety: "The link is not used until you press the button. This protects it from automatic link checks in chats and browsers.",
+      };
+  return pageShell(language, copy.title, `
+    <p class="eyebrow">${escapeHtml(copy.eyebrow)}</p>
+    <h1>${escapeHtml(copy.title)}</h1>
+    <p class="lead">${escapeHtml(copy.body)}</p>
+    <form method="post">
+      <button class="button" type="submit">${escapeHtml(copy.action)}</button>
+    </form>
+    <p class="safe">${escapeHtml(copy.safety)}</p>
+  `);
+}
+
 export function connectorSetupPageHtml(
   connectorName: string,
   fields: CredentialField[],

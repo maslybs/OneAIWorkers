@@ -19,6 +19,7 @@ import { updatePageHtml } from "./update-page";
 import { normalizeMcpToolCallRequest } from "./mcp-request";
 import { DAILY_NEURON_ALLOCATION, USD_PER_1000_NEURONS } from "./tools/neuron-meter";
 import {
+  connectorAccessPageHtml,
   connectorPageHeaders,
   connectorInstallPageHtml,
   connectorSetupPageHtml,
@@ -109,9 +110,17 @@ export default {
       }
 
       const connectorAccessMatch = url.pathname.match(/^\/connectors\/access\/([A-Za-z0-9_-]{32,200})$/);
-      if (connectorAccessMatch && request.method === "GET") {
+      if (connectorAccessMatch && (request.method === "GET" || request.method === "POST")) {
         const token = connectorAccessMatch[1];
         const language = pageLanguage(url, request);
+        if (request.method === "GET") {
+          return new Response(connectorAccessPageHtml(language), {
+            headers: connectorPageHeaders(),
+          });
+        }
+        if (request.headers.get("origin") !== new URL(baseUrl).origin) {
+          return json({ ok: false, error: biInline("The request came from another website.", "Запит надійшов з іншого сайту.") }, { status: 403 });
+        }
         const access = await consumeConnectorAccessToken(env, token);
         const target = `${baseUrl}/connectors/${encodeURIComponent(access.connectorId)}/setup?lang=${language}`;
         const headers = new Headers({

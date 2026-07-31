@@ -173,7 +173,7 @@ export async function validateConnectorSession(env: Env, connectorId: string, ra
 }
 
 export function connectorSessionCookie(sessionToken: string): string {
-  return `oneaiworkers_connector_session=${sessionToken}; Path=/connectors/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
+  return `oneaiworkers_connector_session=${sessionToken}; Path=/connectors/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
 }
 
 export function readConnectorSessionCookie(request: Request): string | null {

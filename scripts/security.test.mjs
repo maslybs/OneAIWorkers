@@ -18,6 +18,8 @@ await build({
     homeHtml: path.join(root, "src", "html.ts"),
     crypto: path.join(root, "src", "crypto.ts"),
     marketplace: path.join(root, "src", "marketplace.ts"),
+    connectorPages: path.join(root, "src", "connector-pages.ts"),
+    vault: path.join(root, "src", "vault.ts"),
   },
   bundle: true,
   format: "esm",
@@ -32,6 +34,8 @@ const responseHelpers = await import(pathToFileURL(path.join(outputDirectory, "r
 const homeHtmlHelpers = await import(pathToFileURL(path.join(outputDirectory, "homeHtml.js")));
 const cryptoHelpers = await import(pathToFileURL(path.join(outputDirectory, "crypto.js")));
 const marketplaceHelpers = await import(pathToFileURL(path.join(outputDirectory, "marketplace.js")));
+const connectorPageHelpers = await import(pathToFileURL(path.join(outputDirectory, "connectorPages.js")));
+const vaultHelpers = await import(pathToFileURL(path.join(outputDirectory, "vault.js")));
 
 test.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
 
@@ -41,6 +45,14 @@ test("home page names ChatGPT, Claude, and other MCP-compatible clients", () => 
   assert.match(html, /other MCP-compatible clients/u);
   assert.match(html, /Streamable HTTP/u);
   assert.match(html, /https:\/\/worker\.example\/mcp/u);
+});
+
+test("connector settings links wait for an explicit same-site confirmation", () => {
+  const html = connectorPageHelpers.connectorAccessPageHtml("uk");
+  assert.match(html, /<form method="post">/u);
+  assert.match(html, /Продовжити до налаштувань/u);
+  assert.doesNotMatch(html, /http-equiv=["']refresh/u);
+  assert.match(vaultHelpers.connectorSessionCookie("test-session"), /SameSite=Lax/u);
 });
 
 test("redacts secret values while preserving Cloudflare secret references", () => {
