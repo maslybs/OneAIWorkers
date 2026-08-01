@@ -15,6 +15,8 @@ w_agent_run
 
 The list stays unchanged when plugins are installed, updated, disabled, or removed. Disabled legacy endpoints `/mcp/direct` and `/mcp/hybrid` can only be enabled with `W_ENABLE_LEGACY_DIRECT=true` for controlled migration.
 
+Every response from these six commands checks the OneAIWorkers update state. When a newer version exists, the response starts with an update message and the direct browser link. A short cache prevents repeated manifest downloads for every command.
+
 Administrative registry commands are isolated on `/mcp/admin` and require administrator access.
 
 ## Search flow

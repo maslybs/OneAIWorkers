@@ -188,10 +188,11 @@ test("update notices lead with a browser link in text and structured content", (
   });
 
   const text = result.content[0].text;
-  assert.ok(text.startsWith("UPDATE AVAILABLE / ДОСТУПНЕ ОНОВЛЕННЯ"));
+  assert.ok(text.startsWith("NEW UPDATE AVAILABLE / ДОСТУПНЕ НОВЕ ОНОВЛЕННЯ"));
   assert.ok(text.indexOf(updateUrl) < text.indexOf("regular tool output"));
   assert.equal(result.structuredContent.user_action_required, true);
   assert.equal(result.structuredContent.update_url, updateUrl);
+  assert.equal(result.structuredContent.update_action_label, "Update / Оновитися");
   assert.equal(result.structuredContent.open_update_url_in_browser, true);
   assert.equal(result.structuredContent.do_not_fetch_update_url_from_a_tool, true);
 });

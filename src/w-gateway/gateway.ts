@@ -5,7 +5,7 @@ import { bi } from "../i18n";
 import { errorMessage, mcpText } from "../response";
 import { redactSensitiveText, redactSensitiveValue, safeKey } from "../security";
 import type { Env } from "../types";
-import { APP_VERSION } from "../update";
+import { APP_VERSION, getUpdateState, updateNotice } from "../update";
 import { createWRequestContext } from "./context";
 import { semanticPluginThreshold } from "./config";
 import { processEmbeddingJobs, rebuildVectorClusters } from "./embeddings";
@@ -21,6 +21,7 @@ const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: ["mcp"] }] as const;
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const READ_EXTERNAL = { readOnlyHint: true, destructiveHint: false, openWorldHint: true };
 const WRITE_EXTERNAL = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+const gatewayUpdateNotices = new WeakMap<McpServer, () => Promise<ReturnType<typeof updateNotice>>>();
 
 const capabilityKind = z.enum(["plugin", "skill", "agent", "prompt", "resource", "ui"]);
 const searchFilters = z.object({
@@ -43,6 +44,7 @@ export async function createWGatewayServer(
 }
 
 export function registerWGatewayTools(server: McpServer, env: Env, context: WRequestContext): void {
+  gatewayUpdateNotices.set(server, async () => updateNotice(await getUpdateState(env, context.baseUrl)));
   register(
     server,
     "w_search",
@@ -165,6 +167,7 @@ async function searchCurrentRegistry(
 export async function createWAdminServer(env: Env, request: Request): Promise<McpServer> {
   const context = await createWRequestContext(request, env, "meta");
   const server = new McpServer({ name: `${env.HUB_NAME || "OneAIWorkers"} Admin`, version: APP_VERSION });
+  gatewayUpdateNotices.set(server, async () => updateNotice(await getUpdateState(env, context.baseUrl)));
   const adminTool = <T extends z.ZodRawShape>(name: string, description: string, shape: T, handler: (args: z.infer<z.ZodObject<T>>) => unknown | Promise<unknown>) =>
     register(server, name, name, description, shape, handler, WRITE_EXTERNAL);
 
@@ -266,12 +269,29 @@ function register<T extends z.ZodRawShape>(
     securitySchemes: OAUTH_SECURITY_SCHEMES,
     annotations,
   } as never, (async (args: unknown) => {
+    const noticePromise = gatewayUpdateNotice(server);
     try {
-      return mcpText({ ok: true, data: redactSensitiveValue(await handler(args as z.infer<z.ZodObject<T>>)) });
+      return mcpText({
+        ok: true,
+        data: redactSensitiveValue(await handler(args as z.infer<z.ZodObject<T>>)),
+        update: await noticePromise,
+      });
     } catch (error) {
-      return mcpText({ ok: false, message: redactSensitiveText(errorMessage(error)) });
+      return mcpText({
+        ok: false,
+        message: redactSensitiveText(errorMessage(error)),
+        update: await noticePromise,
+      });
     }
   }) as never);
+}
+
+async function gatewayUpdateNotice(server: McpServer) {
+  try {
+    return await gatewayUpdateNotices.get(server)?.();
+  } catch {
+    return undefined;
+  }
 }
 
 function validatePluginManifest(manifest: Record<string, unknown>) {

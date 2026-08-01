@@ -26,6 +26,7 @@ database.exec("PRAGMA foreign_keys = ON");
 const d1 = d1Adapter(database);
 const env = {
   OAUTH_DB: d1,
+  UPDATE_CHECK_ENABLED: "false",
   AI: {
     async run(_model, input) {
       const values = Array.isArray(input.text) ? input.text : [input.text];
@@ -72,6 +73,46 @@ test("meta mode always exposes exactly the six stable W tools", async () => {
   await seedLegacyPlugin(d1);
   const afterServer = await gateway.createWGatewayServer(env, request);
   assert.deepEqual(Object.keys(afterServer._registeredTools).sort(), before);
+});
+
+test("every W Gateway response reports an available OneAIWorkers update", async () => {
+  const originalFetch = globalThis.fetch;
+  let manifestRequests = 0;
+  env.UPDATE_CHECK_ENABLED = "true";
+  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.0.3.json";
+  globalThis.fetch = async () => {
+    manifestRequests += 1;
+    return Response.json({
+      schema_version: 1,
+      latest_version: "1.0.3",
+      critical: false,
+      message: { en: "New update.", uk: "Доступне нове оновлення." },
+    });
+  };
+  try {
+    const server = await gateway.createWGatewayServer(env, request);
+    const success = await server._registeredTools.w_search.handler({
+      query: "",
+      limit: 8,
+      filters: { connected_only: false, plugin_ids: [], target: "oneaiworkers-cloudflare" },
+    });
+    assert.equal(success.structuredContent.user_action_required, true);
+    assert.equal(success.structuredContent.update_url, "https://worker.example/update");
+    assert.equal(success.structuredContent.update_action_label, "Update / Оновитися");
+    assert.ok(success.content[0].text.startsWith("NEW UPDATE AVAILABLE / ДОСТУПНЕ НОВЕ ОНОВЛЕННЯ"));
+
+    const failure = await server._registeredTools.w_call.handler({
+      tool_ref: "missing:api/unknown@1.0.0",
+      arguments: {},
+    });
+    assert.equal(failure.isError, true);
+    assert.equal(failure.structuredContent.update_url, "https://worker.example/update");
+    assert.equal(manifestRequests, 1, "each command checks update state while the short manifest cache avoids duplicate network requests");
+  } finally {
+    globalThis.fetch = originalFetch;
+    env.UPDATE_CHECK_ENABLED = "false";
+    delete env.UPDATE_MANIFEST_URL;
+  }
 });
 
 test("registry normalizes installed actions into immutable plugin tool references", async () => {

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "1.0.1",
+  "latest_version": "1.0.2",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 1.0.1 makes plugin search faster: exact names and D1 FTS5 run first, while vector search is reserved for larger catalogs and uncertain queries.",
-    "uk": "OneAIWorkers 1.0.1 пришвидшує пошук плагінів: спочатку працюють точні назви та D1 FTS5, а векторний пошук вмикається лише для великих каталогів і нечітких запитів."
+    "en": "OneAIWorkers 1.0.2 makes every W Gateway response announce a newer OneAIWorkers version and put the browser update link first.",
+    "uk": "OneAIWorkers 1.0.2 у кожній відповіді W Gateway повідомляє про новішу версію OneAIWorkers і ставить посилання для оновлення на початок."
   }
 }
