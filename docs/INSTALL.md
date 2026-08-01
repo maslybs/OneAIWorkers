@@ -4,7 +4,7 @@
 
 OneAIWorkers is a small Cloudflare Worker that gives an AI assistant safe actions through MCP.
 
-It does not need a database for AI memory. The AI assistant keeps memory and decides what to do. OneAIWorkers uses a small D1 database for OAuth, connector settings, connector actions, and audit records.
+It does not need a database for AI memory. The AI assistant keeps memory and decides what to do. OneAIWorkers uses D1 for OAuth, plugin settings, permissions, search data, large-result metadata, and audit records.
 
 ## Option A: simple installer without GitHub
 
@@ -32,7 +32,7 @@ You need:
 - a Cloudflare account;
 - Node.js 20 or newer;
 - Wrangler login;
-- ChatGPT with connector support, or another MCP client.
+- ChatGPT with MCP support, or another MCP client.
 
 ### 2. Install packages
 
@@ -93,11 +93,11 @@ npx wrangler secret put DEFAULT_WEBHOOK_URL
 
 Generic webhooks are useful for Make, Zapier, n8n, Discord, Slack, or your own system.
 
-### 6. Child Worker creation
+### 6. Manual plugin Worker creation
 
 This is optional.
 
-Use it only if you want the tool `create_child_worker_from_template` to create small child Workers.
+Use it only when a developer deliberately enables the old direct mode and creates a small Worker from a reviewed template. Normal marketplace plugins do not need a permanent Cloudflare API token.
 
 ```bash
 npx wrangler secret put CF_API_TOKEN
@@ -145,11 +145,11 @@ https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ## Connect to ChatGPT
 
 1. Open ChatGPT settings.
-2. Open Apps and Connectors.
+2. Open the area for Apps.
 3. Turn on developer mode if needed.
-4. Create a connector.
+4. Create a custom MCP app.
 5. Use your Worker `/mcp` URL.
-6. Refresh tool metadata after deployments.
+6. Connect through OAuth and enter the OneAIWorkers access secret.
 
 If you added `MCP_SHARED_SECRET`, use OAuth or send the secret in the `Authorization: Bearer` header. URL query secrets are not accepted.
 

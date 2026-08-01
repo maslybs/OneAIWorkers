@@ -173,14 +173,14 @@ export async function validateConnectorSession(env: Env, connectorId: string, ra
 }
 
 export function connectorSessionCookie(sessionToken: string): string {
-  return `oneaiworkers_connector_session=${sessionToken}; Path=/connectors/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
+  return `oneaiworkers_plugin_session=${sessionToken}; Path=/plugins/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
 }
 
 export function readConnectorSessionCookie(request: Request): string | null {
   const cookie = request.headers.get("cookie") || "";
   for (const item of cookie.split(";")) {
     const [name, ...parts] = item.trim().split("=");
-    if (name === "oneaiworkers_connector_session") return parts.join("=") || null;
+    if (name === "oneaiworkers_plugin_session") return parts.join("=") || null;
   }
   return null;
 }

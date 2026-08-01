@@ -110,6 +110,7 @@ export const agentTeamDeleteSchema = {
 export const agentTeamStartSchema = {
   team_id: z.string().uuid(),
   task: z.string().min(1).max(MAX_TASK_CHARS),
+  max_steps: z.number().int().min(1).max(20).optional(),
   max_budget_usd: z.number().min(0.0001).max(100).optional(),
   confirmed: z.boolean().default(false),
 };

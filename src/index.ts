@@ -1,5 +1,5 @@
 import { createMcpHandler } from "agents/mcp";
-import { buildBaseUrl, isMcpAuthorized, unauthorized } from "./auth";
+import { buildBaseUrl, isMcpAdminAuthorized, isMcpAuthorized, unauthorized } from "./auth";
 import { bilingualObject, biInline } from "./i18n";
 import { homeHtml } from "./html";
 import {
@@ -20,6 +20,7 @@ import { normalizeMcpToolCallRequest } from "./mcp-request";
 import { isSameOriginFormRequest } from "./security";
 import { DAILY_NEURON_ALLOCATION, USD_PER_1000_NEURONS } from "./tools/neuron-meter";
 import {
+  confirmationApprovalPageHtml,
   connectorAccessPageHtml,
   connectorPageHeaders,
   connectorInstallPageHtml,
@@ -38,6 +39,7 @@ import {
 } from "./vault";
 import { parseCredentialFields, registerInstalledConnector } from "./connector-installation";
 import { getInstalledPackage, getMarketplaceItem } from "./marketplace";
+import { approveConfirmation, createWAdminServer, openConfirmationApproval } from "./w-gateway";
 
 export { AgentManager } from "./agents";
 
@@ -75,29 +77,61 @@ export default {
         return Response.redirect(startUrl, 303);
       }
 
-      const connectorInstallMatch = url.pathname.match(/^\/connectors\/install\/([a-z0-9_-]+)$/);
+      const confirmationMatch = url.pathname.match(/^\/confirm\/([A-Za-z0-9_-]{20,300})$/u);
+      if (confirmationMatch && (request.method === "GET" || request.method === "POST")) {
+        const language = pageLanguage(url, request);
+        const token = confirmationMatch[1];
+        if (request.method === "GET") {
+          const pending = await openConfirmationApproval(env, token);
+          if (!pending) {
+            return new Response(confirmationApprovalPageHtml(language, "expired"), {
+              status: 410,
+              headers: connectorPageHeaders(),
+            });
+          }
+          const headers = new Headers(connectorPageHeaders());
+          headers.append("set-cookie", `oneaiworkers_confirmation=${pending.browserNonce}; Path=/confirm/; Max-Age=600; HttpOnly; Secure; SameSite=Strict`);
+          return new Response(confirmationApprovalPageHtml(language, "pending", pending.toolRef), { headers });
+        }
+        if (!isSameOriginFormRequest(request, baseUrl)) {
+          return new Response(confirmationApprovalPageHtml(language, "expired"), {
+            status: 403,
+            headers: connectorPageHeaders(),
+          });
+        }
+        const browserNonce = cookieValue(request, "oneaiworkers_confirmation");
+        const approved = browserNonce ? await approveConfirmation(env, token, browserNonce) : { ok: false as const };
+        const headers = new Headers(connectorPageHeaders());
+        headers.append("set-cookie", "oneaiworkers_confirmation=; Path=/confirm/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
+        return new Response(confirmationApprovalPageHtml(language, approved.ok ? "approved" : "expired"), {
+          status: approved.ok ? 200 : 410,
+          headers,
+        });
+      }
+
+      const connectorInstallMatch = url.pathname.match(/^\/plugins\/install\/([a-z0-9_-]+)$/);
       if (connectorInstallMatch && request.method === "GET") {
         const entry = await getMarketplaceItem(env, connectorInstallMatch[1]);
-        if (!entry) return json({ ok: false, error: biInline("Cloud connector not found.", "Хмарний конектор не знайдено.") }, { status: 404 });
+        if (!entry) return json({ ok: false, error: biInline("Cloud plugin not found.", "Хмарний плагін не знайдено.") }, { status: 404 });
         const language = pageLanguage(url, request);
         return new Response(connectorInstallPageHtml(env, baseUrl, entry.item, entry.target, language), {
           headers: connectorPageHeaders(),
         });
       }
 
-      const connectorUpdateMatch = url.pathname.match(/^\/connectors\/([a-z0-9_-]+)\/update$/);
+      const connectorUpdateMatch = url.pathname.match(/^\/plugins\/([a-z0-9_-]+)\/update$/);
       if (connectorUpdateMatch && request.method === "GET") {
         const installed = await getInstalledPackage(env, connectorUpdateMatch[1]);
-        if (!installed) return json({ ok: false, error: biInline("Installed connector not found.", "Встановлений конектор не знайдено.") }, { status: 404 });
+        if (!installed) return json({ ok: false, error: biInline("Installed plugin not found.", "Встановлений плагін не знайдено.") }, { status: 404 });
         const entry = await getMarketplaceItem(env, installed.package_id);
-        if (!entry) return json({ ok: false, error: biInline("Cloud connector not found.", "Хмарний конектор не знайдено.") }, { status: 404 });
+        if (!entry) return json({ ok: false, error: biInline("Cloud plugin not found.", "Хмарний плагін не знайдено.") }, { status: 404 });
         const language = pageLanguage(url, request);
         return new Response(connectorUpdatePageHtml(env, baseUrl, entry.item, entry.target, installed, language), {
           headers: connectorPageHeaders(),
         });
       }
 
-      if (url.pathname === "/connectors/complete" && request.method === "POST") {
+      if (url.pathname === "/plugins/complete" && request.method === "POST") {
         const contentType = request.headers.get("content-type") || "";
         if (!contentType.toLowerCase().includes("application/json")) {
           return json({ ok: false, error: "Expected application/json." }, { status: 415 });
@@ -110,7 +144,7 @@ export default {
         return json(await registerInstalledConnector(env, baseUrl, body.ticket));
       }
 
-      const connectorAccessMatch = url.pathname.match(/^\/connectors\/access\/([A-Za-z0-9_-]{32,200})$/);
+      const connectorAccessMatch = url.pathname.match(/^\/plugins\/access\/([A-Za-z0-9_-]{32,200})$/);
       if (connectorAccessMatch && (request.method === "GET" || request.method === "POST")) {
         const token = connectorAccessMatch[1];
         const language = pageLanguage(url, request);
@@ -123,7 +157,7 @@ export default {
           return json({ ok: false, error: biInline("The request came from another website.", "Запит надійшов з іншого сайту.") }, { status: 403 });
         }
         const access = await consumeConnectorAccessToken(env, token);
-        const target = `${baseUrl}/connectors/${encodeURIComponent(access.connectorId)}/setup?lang=${language}`;
+        const target = `${baseUrl}/plugins/${encodeURIComponent(access.connectorId)}/setup?lang=${language}`;
         const headers = new Headers({
           location: target,
           "cache-control": "no-store",
@@ -137,7 +171,7 @@ export default {
         });
       }
 
-      const connectorSetupMatch = url.pathname.match(/^\/connectors\/([a-z0-9_-]+)\/setup$/);
+      const connectorSetupMatch = url.pathname.match(/^\/plugins\/([a-z0-9_-]+)\/setup$/);
       if (connectorSetupMatch && (request.method === "GET" || request.method === "POST")) {
         const connectorId = connectorSetupMatch[1];
         const session = readConnectorSessionCookie(request);
@@ -145,7 +179,7 @@ export default {
           return json({ ok: false, error: biInline("This settings link has expired. Ask your MCP client for a new settings link.", "Термін дії посилання минув. Попросіть MCP-клієнт створити нове посилання на налаштування.") }, { status: 401 });
         }
         const installed = await getInstalledPackage(env, connectorId);
-        if (!installed) return json({ ok: false, error: biInline("Installed connector not found.", "Встановлений конектор не знайдено.") }, { status: 404 });
+        if (!installed) return json({ ok: false, error: biInline("Installed plugin not found.", "Встановлений плагін не знайдено.") }, { status: 404 });
         const fields = parseCredentialFields(installed.credential_fields_json);
         const entry = await getMarketplaceItem(env, installed.package_id);
         const connectorName = entry?.item.name || installed.package_id;
@@ -213,67 +247,48 @@ export default {
           name: env.HUB_NAME || "OneAIWorkers",
           version: APP_VERSION,
           description: bilingualObject(
-            "Secure remote MCP gateway for connecting ChatGPT, Claude, and other MCP-compatible clients to user-owned HTTP APIs through saved connector manifests on Cloudflare Workers.",
-            "Безпечний віддалений MCP-шлюз для підключення ChatGPT, Claude та інших MCP-сумісних клієнтів до HTTP API користувача через збережені налаштування конекторів на Cloudflare Workers.",
+            "A private MCP gateway with installable plugins, semantic operation search, protected credentials, and controlled execution on Cloudflare.",
+            "Приватний MCP-шлюз із плагінами, пошуком потрібних дій, захищеними ключами та контрольованим виконанням у Cloudflare.",
           ),
           mcp_endpoint: `${baseUrl}/mcp`,
+          mcp_admin_endpoint: `${baseUrl}/mcp/admin`,
           update_page: `${baseUrl}/update`,
-          stable_gateway: {
-            discovery_tool: "list_connectors",
-            invocation_tool: "call_connector_tool",
-            system_connector_id: "system",
-            native_connector_id: "native",
-            connector_data_source: "D1_live",
-            client_refresh_required: false,
+          gateway: {
+            mode: "meta",
+            public_tools: ["w_search", "w_describe", "w_call", "w_present", "w_result_read", "w_agent_run"],
+            registry_source: "D1",
+            semantic_search: Boolean(env.AI),
+            client_refresh_after_plugin_install: false,
+            direct_mode_enabled: String(env.W_ENABLE_LEGACY_DIRECT || "").toLowerCase() === "true",
           },
           neuron_meter: {
             local_tracking_configured: Boolean(env.OAUTH_DB),
-            status_tool: "ai_neuron_status",
-            history_tool: "ai_neuron_history",
+            discover_with: "w_search",
             daily_free_allocation: DAILY_NEURON_ALLOCATION,
             paid_price_usd_per_1000_neurons: USD_PER_1000_NEURONS,
             reset_timezone: "UTC",
             account_total_available_without_api_token: false,
           },
-          recommended_first_tools: ["connector_installation_help", "find_capability", "connector_setup_status", "list_connectors", "call_connector_tool", "test_connector"],
-          connector_installation: {
-            generic_help_tool: "connector_installation_help",
-            catalog_search_tool: "find_capability",
-            worker_home_has_marketplace_page: false,
+          recommended_first_tool: "w_search",
+          plugin_installation: {
+            discovery_query: "Find a plugin for the task and return its browser installation link.",
+            settings_path: "/plugins/{plugin_id}/setup",
             availability_rule: bilingualObject(
-              "A connector is available only when find_capability returns it.",
-              "Конектор доступний лише тоді, коли його повернув find_capability.",
+              "A plugin is available only when the live registry or marketplace returns it.",
+              "Плагін доступний лише тоді, коли його повернув живий реєстр або каталог.",
             ),
             credentials_rule: bilingualObject(
-              "Service credentials are entered only on the protected settings page of the user's own Worker, never in chat.",
-              "Ключі сервісу вводяться лише на захищеній сторінці власного Worker користувача, ніколи не в чаті.",
+              "Service keys are entered only on the protected plugin page of the user's own Worker, never in chat.",
+              "Ключі сервісу вводяться лише на захищеній сторінці плагіна у власному Worker, ніколи не в чаті.",
             ),
           },
-          connector_engine: {
-            storage: "D1",
-            supported_http_methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-            supports_path_templates: true,
-            supports_query_templates: true,
-            supports_json_body_templates: true,
-            supported_auth: [
-              "none",
-              "bearer_secret",
-              "auth_header_secret",
-              "api_key_header_secret",
-              "api_key_query_secret",
-              "basic_secret",
-              "basic_secret_pair",
-              "oauth2_client_credentials",
-              "oauth2_refresh_token",
-              "google_oauth2_refresh_token",
-            ],
-            response_format: "structuredContent plus compact JSON summary/json_preview",
-            child_worker_model: {
-              default_route: "main_gateway_only",
-              main_gateway_tool: "call_connector_tool",
-              supported_invocations: ["service_binding", "protected_url"],
-              direct_child_url: "optional for advanced/manual use, not required by normal MCP clients",
-            },
+          registry: {
+            package_format: "oneai.plugin.v1",
+            versioned_tool_references: true,
+            stores_schemas_in_d1: true,
+            stores_embeddings_in_d1: true,
+            full_schemas_are_loaded_only_by_w_describe: true,
+            large_results_use_w_result_read: true,
           },
           oauth: isOAuthEnabled(env)
             ? {
@@ -283,47 +298,9 @@ export default {
               }
             : { enabled: false },
           model: bilingualObject(
-            "The MCP client can use direct tools or create data-defined agent teams. OneAIWorkers stores agent state and queued orchestration runs in a SQLite-backed Durable Object and executes bounded Workers AI steps with budgets and cancellation controls.",
-            "MCP-клієнт може використовувати прямі tools або створювати data-defined команди агентів. OneAIWorkers зберігає стан агентів і queued orchestration runs у SQLite-backed Durable Object та виконує обмежені Workers AI кроки з бюджетами й cancellation controls.",
+            "The MCP client searches the plugin registry, loads only the chosen schemas, and runs known versioned operations with permissions, confirmation, and repeat protection.",
+            "MCP-клієнт шукає потрібну дію в реєстрі плагінів, завантажує лише обрані схеми та виконує відомі версійні дії з перевіркою прав, підтвердженням і захистом від повтору.",
           ),
-          tools: [
-            "fetch_url",
-            "fetch_many_urls",
-            "fetch_rss",
-            "check_url_status",
-            "ai_capabilities",
-            "ai_models_list",
-            "ai_recommend_model",
-            "ai_neuron_status",
-            "ai_neuron_history",
-            "ai_chat",
-            "agent_capabilities",
-            "agent_team_propose",
-            "agent_create",
-            "agent_list",
-            "agent_update",
-            "agent_team_create",
-            "agent_team_list",
-            "agent_team_update",
-            "agent_team_start",
-            "agent_run_list",
-            "agent_run_status",
-            "agent_run_cancel",
-            "send_notification",
-            "call_webhook",
-            "connector_installation_help",
-            "find_capability",
-            "list_connector_updates",
-            "get_connector_settings_link",
-            "save_connector",
-            "list_connectors",
-            "connector_setup_status",
-            "test_connector",
-            "call_connector_tool",
-            "delete_connector",
-            "create_child_worker_from_template",
-            "deploy_custom_child_worker",
-          ],
           authentication: isOAuthEnabled(env)
             ? bilingualObject(
                 "OAuth is enabled. For private deployments, OAuth authorization requires MCP_SHARED_SECRET. Manual API access should use Authorization: Bearer or x-oneaiworkers-token, not URL query secrets.",
@@ -341,9 +318,19 @@ export default {
         });
       }
 
-      if (url.pathname === "/mcp") {
-        if (!(await isMcpAuthorized(request, env))) return unauthorized(request, env);
-        const server = await createMcpServer(env, request);
+      if (["/mcp", "/mcp/direct", "/mcp/hybrid", "/mcp/admin"].includes(url.pathname)) {
+        if (url.pathname === "/mcp/admin") {
+          if (!(await isMcpAdminAuthorized(request, env))) {
+            return json({ ok: false, error: biInline("Administrator access is required.", "Потрібен доступ адміністратора.") }, { status: 403 });
+          }
+        } else if (!(await isMcpAuthorized(request, env))) return unauthorized(request, env);
+        const legacyMode = url.pathname === "/mcp/direct" || url.pathname === "/mcp/hybrid";
+        if (legacyMode && String(env.W_ENABLE_LEGACY_DIRECT || "").toLowerCase() !== "true") {
+          return json({ ok: false, error: biInline("Legacy direct mode is disabled.", "Старий прямий режим вимкнено.") }, { status: 404 });
+        }
+        const server = url.pathname === "/mcp/admin"
+          ? await createWAdminServer(env, request)
+          : await createMcpServer(env, request, url.pathname === "/mcp/direct" ? "direct" : url.pathname === "/mcp/hybrid" ? "hybrid" : "meta");
         const normalizedRequest = await normalizeMcpToolCallRequest(request);
         const response = await createMcpHandler(server, { enableJsonResponse: true })(normalizedRequest, env, ctx);
         return withoutCaching(response);
@@ -359,6 +346,11 @@ export default {
     }
   },
 };
+
+function cookieValue(request: Request, name: string): string | null {
+  const match = (request.headers.get("cookie") || "").match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 function withoutCaching(response: Response): Response {
   const headers = new Headers(response.headers);

@@ -20,6 +20,7 @@ await build({
     marketplace: path.join(root, "src", "marketplace.ts"),
     connectorPages: path.join(root, "src", "connector-pages.ts"),
     vault: path.join(root, "src", "vault.ts"),
+    auth: path.join(root, "src", "auth.ts"),
   },
   bundle: true,
   format: "esm",
@@ -36,12 +37,22 @@ const cryptoHelpers = await import(pathToFileURL(path.join(outputDirectory, "cry
 const marketplaceHelpers = await import(pathToFileURL(path.join(outputDirectory, "marketplace.js")));
 const connectorPageHelpers = await import(pathToFileURL(path.join(outputDirectory, "connectorPages.js")));
 const vaultHelpers = await import(pathToFileURL(path.join(outputDirectory, "vault.js")));
+const authHelpers = await import(pathToFileURL(path.join(outputDirectory, "auth.js")));
 
 test.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
 
 test("routes protected child Worker calls through the public Cloudflare front door", () => {
   const wranglerConfig = fs.readFileSync(path.join(root, "wrangler.toml"), "utf8");
   assert.match(wranglerConfig, /compatibility_flags\s*=\s*\[[^\]]*"nodejs_compat"[^\]]*"global_fetch_strictly_public"[^\]]*\]/u);
+});
+
+test("a separate administrator secret authorizes only the admin endpoint", async () => {
+  const request = new Request("https://worker.example/mcp/admin", {
+    headers: { authorization: "Bearer admin-secret-value" },
+  });
+  const env = { MCP_SHARED_SECRET: "user-secret-value", W_ADMIN_SECRET: "admin-secret-value" };
+  assert.equal(await authHelpers.isMcpAdminAuthorized(request, env), true);
+  assert.equal(await authHelpers.isMcpAuthorized(request, env), false);
 });
 
 test("home page names ChatGPT, Claude, and other MCP-compatible clients", () => {
@@ -283,11 +294,11 @@ test("searches a downloaded marketplace catalog without sending the user query",
       "https://worker.example",
       { query: "inspect workflow executions", limit: 5, language: "en" },
     );
-    assert.equal(result.matches[0].connector_id, "n8n");
-    assert.deepEqual(result.matches.map((match) => match.connector_id), ["n8n"]);
-    assert.match(result.matches[0].install_url, /^https:\/\/worker\.example\/connectors\/install\/n8n/u);
+    assert.equal(result.matches[0].plugin_id, "n8n");
+    assert.deepEqual(result.matches.map((match) => match.plugin_id), ["n8n"]);
+    assert.match(result.matches[0].install_url, /^https:\/\/worker\.example\/plugins\/install\/n8n/u);
     assert.equal(result.available, true);
-    assert.equal(result.browser_action.type, "install_connector");
+    assert.equal(result.browser_action.type, "install_plugin");
     assert.equal(result.browser_action.url, result.matches[0].install_url);
     assert.equal(result.browser_action.open_in_normal_browser, true);
     assert.match(result.credential_next_step, /Never ask for the service key in chat/u);
@@ -304,7 +315,7 @@ test("searches a downloaded marketplace catalog without sending the user query",
     assert.deepEqual(requests, [
       "https://marketplace.example/catalog",
       "https://marketplace.example/catalog",
-      "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker&type=connector",
+      "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker",
     ]);
     assert.equal(requestOptions[0].headers["cache-control"], "no-cache");
     assert.equal(requestOptions[0].cf.cacheTtl, 0);
@@ -313,27 +324,27 @@ test("searches a downloaded marketplace catalog without sending the user query",
   }
 });
 
-test("generic connector installation help prevents invented marketplace steps", () => {
+test("generic plugin installation help prevents invented marketplace steps", () => {
   const result = marketplaceHelpers.connectorInstallationHelp({ language: "uk" });
   assert.equal(result.safety.worker_home_has_marketplace_page, false);
   assert.equal(result.safety.never_invent_catalog_items, true);
   assert.equal(result.safety.never_request_credentials_in_chat, true);
-  assert.match(result.exact_reply, /^Назвіть сервіс або опишіть дію/u);
-  assert.match(result.response_instruction, /Не вигадуйте розділ Marketplace/u);
+  assert.match(result.exact_reply, /^Назвіть сервіс або опишіть потрібну дію/u);
+  assert.match(result.response_instruction, /Не вигадуйте назви плагінів/u);
   assert.equal(result.installation_flow[0], "Після назви сервісу або задачі викликати find_capability.");
 });
 
-test("connector installation result puts the exact browser link first", () => {
-  const installUrl = "https://worker.example/connectors/install/n8n?lang=uk";
+test("plugin installation result puts the exact browser link first", () => {
+  const installUrl = "https://worker.example/plugins/install/n8n?lang=uk";
   const result = responseHelpers.mcpText({
     ok: true,
     data: {
       browser_action: {
-        type: "install_connector",
+        type: "install_plugin",
         url: installUrl,
         response_instruction: "Use the exact link.",
       },
-      matches: [{ connector_id: "n8n", install_url: installUrl }],
+      matches: [{ plugin_id: "n8n", install_url: installUrl }],
     },
   });
   assert.ok(result.content[0].text.startsWith(installUrl));

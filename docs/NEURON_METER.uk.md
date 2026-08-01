@@ -60,13 +60,12 @@ ai_neuron_status
 ai_neuron_history
 ```
 
-Обидва tools доступні через stable frozen-snapshot gateway:
+Обидві дії доступні через W Gateway. Спочатку знайдіть дію, а потім викличте незмінне посилання, яке повернув `w_search`:
 
 ```json
 {
-  "connector_id": "native",
-  "action_name": "ai_neuron_status",
-  "input": {}
+  "tool_ref": "oneaiworkers:workers-ai/ai_neuron_status@1.0.0",
+  "arguments": {}
 }
 ```
 

@@ -49,6 +49,8 @@ export interface UsageEstimate {
 export interface RunStateData {
   round: number;
   member_index: number;
+  max_steps: number;
+  steps_completed: number;
   coordinator_plan?: string;
   feedback?: string;
   outputs: RunOutput[];

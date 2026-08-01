@@ -1,4 +1,5 @@
 export { AgentManager } from "./manager";
+export { AgentOrchestrator } from "./orchestration";
 export { agentCapabilities } from "./capabilities";
 export { agentTeamPropose } from "./proposal";
 export {

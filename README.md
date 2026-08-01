@@ -2,194 +2,137 @@
 
 [Українська версія](README.uk.md)
 
-## Choose how to install
+OneAIWorkers is a private MCP gateway for ChatGPT, Claude, and other MCP-compatible clients. It runs in your Cloudflare account, keeps service keys encrypted in your own D1 database, and extends through installable plugins.
+
+```text
+ChatGPT / Claude / another MCP client → OneAIWorkers → installed plugins and services
+```
+
+## Install
 
 <table>
   <tr>
     <td align="center" width="50%">
       <h3>Simple installation</h3>
-      <p>No GitHub or command line. Sign in to Cloudflare and install.</p>
+      <p>No GitHub or command line.</p>
       <a href="https://workers.bgdn.dev">
-        <img alt="Install OneAIWorkers — Recommended" src="https://img.shields.io/badge/INSTALL_OneAIWorkers-RECOMMENDED-2563EB?style=for-the-badge&amp;logo=cloudflare&amp;logoColor=white">
+        <img alt="Install OneAIWorkers" src="https://img.shields.io/badge/INSTALL-RECOMMENDED-2563EB?style=for-the-badge&amp;logo=cloudflare&amp;logoColor=white">
       </a>
     </td>
     <td align="center" width="50%">
-      <h3>Developer installation</h3>
-      <p>Create a GitHub or GitLab repository and deploy every push automatically.</p>
+      <h3>For developers</h3>
+      <p>Deploy from your own Git repository.</p>
       <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/maslybs/OneAIWorkers">
-        <img alt="Deploy with Git — For developers" src="https://img.shields.io/badge/DEPLOY_WITH_GIT-FOR_DEVELOPERS-F97316?style=for-the-badge&amp;logo=github&amp;logoColor=white">
+        <img alt="Deploy with Git" src="https://img.shields.io/badge/DEPLOY_WITH_GIT-DEVELOPERS-F97316?style=for-the-badge&amp;logo=github&amp;logoColor=white">
       </a>
     </td>
   </tr>
 </table>
 
-Both methods install OneAIWorkers in the user's own Cloudflare account. The simple installer is easier; the Git method gives developers direct control over the repository and deployment history.
+The simple installer creates the Worker, D1 database, Workers AI binding, agent storage, private access secret, and credential encryption key. The final page shows the protected `/mcp` address and access secret. Save the secret immediately; it is shown once.
 
-OneAIWorkers lets ChatGPT, Claude, and other MCP-compatible clients use your APIs and tools while the access keys stay in your own Cloudflare account.
+## Connect a client
 
-You install one Worker, connect one `/mcp` address, and then add the connectors you need. A connector can read data from an API, send a webhook, call n8n, work with a CRM, or perform another approved action.
-
-```text
-ChatGPT / Claude / another MCP client → your OneAIWorkers → your connectors and APIs
-```
-
-## Why use it
-
-- No GitHub account is needed for the simple installation.
-- The Worker and its D1 database belong to the user.
-- The installer creates a private access secret automatically.
-- Keys for marketplace connectors are encrypted before they are stored in the user's D1 database.
-- Connector actions appear in ChatGPT, Claude, and other MCP clients as normal tools, such as `n8n_list_workflows`.
-- Updates keep the existing database, connectors, and secrets.
-
-## Install
-
-1. Open [workers.bgdn.dev](https://workers.bgdn.dev).
-2. Sign in to Cloudflare.
-3. Select the Cloudflare account where the Worker should be installed.
-4. Choose a name and click **Install OneAIWorkers**.
-5. Save the `/mcp` address and access secret shown on the final page.
-
-The secret is shown only once. Keep it in a password manager or another private place.
-
-The installer automatically creates:
-
-- the OneAIWorkers Worker;
-- a D1 database for OAuth and connector settings;
-- a native Workers AI binding;
-- a SQLite-backed Durable Object namespace for agents, teams, runs, budgets, and cancellation state;
-- `MCP_SHARED_SECRET` for private access.
-- `CREDENTIALS_MASTER_KEY`, kept as a Cloudflare Secret, for encrypting connector credentials.
-
-## Connect an MCP client
-
-All compatible clients use the same protected address:
+Use the same server with every supported client:
 
 ```text
 Authentication: OAuth
 Server URL: https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/mcp
 ```
 
-### ChatGPT
+- In ChatGPT, add a custom MCP app and choose OAuth.
+- In Claude, add a custom remote MCP server. Optional Client ID and Client Secret fields stay empty.
+- Other clients can use Streamable HTTP with OAuth. A client without OAuth may send the access secret in the `Authorization: Bearer` header.
 
-Add a custom MCP app, paste the `/mcp` address, and select OAuth. When the OneAIWorkers sign-in page opens, enter the access secret saved during installation.
+When the OneAIWorkers sign-in page opens, enter the access secret. Never place it in the URL.
 
-### Claude
+See [client setup](docs/CLIENTS.md) for examples.
 
-Open **Customize → Connectors → Add custom connector**, paste the `/mcp` address, and connect. Leave optional Client ID and Client Secret fields empty. OneAIWorkers registers the OAuth client automatically.
+## How it works
 
-Claude Desktop can also connect through `claude_desktop_config.json` and `mcp-remote` when the account connector screen is not available.
-
-### Other MCP clients
-
-Use the `/mcp` address as a remote MCP server with Streamable HTTP and OAuth. Clients without OAuth can send the access secret through an `Authorization: Bearer` header. Never put the secret in the URL.
-
-After connecting, ask your AI client:
+The public MCP surface always contains exactly six commands:
 
 ```text
-Check my OneAIWorkers connector setup.
+w_search
+w_describe
+w_call
+w_present
+w_result_read
+w_agent_run
 ```
 
-The client should use `connector_setup_status`. It reports the database, saved connectors, generated tools, and missing secret names without showing secret values.
+Installing or updating a plugin does not change this list, so MCP clients do not keep stale action lists.
 
-See [Client setup](docs/CLIENTS.md) for complete ChatGPT, Claude Desktop, and generic MCP examples.
+1. `w_search` finds allowed actions using D1 full-text search and Workers AI meaning search.
+2. `w_describe` loads the exact stored schemas only for selected actions.
+3. `w_call` validates and runs one immutable action.
+4. `w_present` is reserved for visual results.
+5. `w_result_read` reads a small part of a large stored result.
+6. `w_agent_run` starts an approved agent or team with limits.
 
-## Add a connector
+Permissions are applied before search and checked again before execution. Risky actions require the user to open a protected browser link. The resulting one-time approval is bound to the user, action, and unchanged arguments, so an agent cannot approve itself.
 
-Ask ChatGPT, Claude, or another MCP client for what you need:
+## Add a plugin
+
+Ask the MCP client for the service or result you need:
 
 ```text
-Find a connector that can inspect my n8n workflows and failed executions.
+Find a plugin that can inspect my n8n workflows and failed runs.
 ```
 
-OneAIWorkers downloads the public catalog and searches it inside your Worker. Your request is not sent to the marketplace. When a matching cloud connector exists, the client gives you a browser link.
+OneAIWorkers searches the marketplace catalog inside your Worker. When a compatible cloud plugin exists, the reply starts with an exact browser installation link.
 
-There is no Marketplace section on your Worker home page. Do not look there for a connector list: first name the service or required action in chat, and OneAIWorkers will check the real catalog through `find_capability`.
+1. Open the link in a normal browser.
+2. Approve installation in Cloudflare.
+3. Enter the service address and key only on your own OneAIWorkers settings page.
+4. Return to the chat. `w_search` can find the new plugin immediately; reconnecting the MCP client is not required.
 
-1. Open the link and approve the installation in Cloudflare.
-2. Enter the service address and API key on your own OneAIWorkers page.
-3. Return to the chat. The connector is ready through `list_connectors` and `call_connector_tool`, even before the client refreshes its full tool list.
+The service key is not sent to the marketplace or central installer. It is encrypted with `CREDENTIALS_MASTER_KEY` before D1 storage.
 
-These two permanent tools always read the live registry. Connector management is available under `connector_id: system`, Workers AI and agents under `connector_id: native`, and installed services under their own connector IDs.
+## Plugin packages
 
-The API key never goes to the marketplace or central installer. OneAIWorkers encrypts it with `CREDENTIALS_MASTER_KEY` before saving it in D1.
+The primary package format is `oneai.plugin.v1`. One package may contain cloud operations, executable skills, agents, prompts, resources, user interface parts, settings, permissions, and runtime artifacts.
 
-Developers can still create a direct HTTP connector with `save_connector`. That older method references Cloudflare Secrets by name and remains useful for private APIs and custom setups. See [Tools](docs/TOOLS.md).
+Every callable action has an immutable reference:
 
-## Access protection
+```text
+<plugin_id>:<capability_id>/<method>@<version>
+```
 
-Knowing only the Worker address is not enough to use its MCP tools.
+Executable skills require a formal `oneai.skill-api.v1` contract with an entry point, methods, schemas, permissions, and side-effect annotations. A plain `SKILL.md` remains instructional and cannot run code.
 
-The normal installer protects access with OAuth and `MCP_SHARED_SECRET`. A person without the secret cannot connect to `/mcp` or call saved connectors. Some public service pages, such as update information or OAuth metadata, may still open, but they do not reveal secrets or grant connector access.
+See [W Gateway and plugin packages](docs/W_GATEWAY.md).
 
-Keep these rules:
+## Security
 
-- never put a secret in a URL;
-- never save a real API key inside a connector manifest;
-- for manually created connectors, store keys only as Cloudflare Secrets;
-- for marketplace connectors, enter keys only on the settings page of your own Worker;
-- replace the access secret if it may have leaked.
+- Knowing only the Worker URL does not grant MCP access.
+- OAuth and `MCP_SHARED_SECRET` protect `/mcp`.
+- Service credentials are encrypted and never enter search text, embeddings, logs, or result previews.
+- The gateway never accepts an arbitrary URL or HTTP method through `w_call`.
+- Large results stay in D1 or R2 and are read in small authorized parts.
+- Administrative publication commands exist only on `/mcp/admin` and require administrator access.
 
-See [Security notes](docs/SECURITY.md) for more details.
+See [security](docs/SECURITY.md).
 
 ## Updates
 
-When an update is available, the MCP response puts the direct update link first:
+When an update is available, open this page in a normal browser:
 
 ```text
 https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/update
 ```
 
-Open this link in a normal browser. Do not test the update page with `fetch_url` or another server-side tool.
+The updater replaces Worker code while preserving D1 data, installed plugins, settings, and Cloudflare Secrets. See [updates](docs/UPDATES.md).
 
-The update process asks you to sign in to Cloudflare, verifies that the Worker belongs to your account, and replaces only the Worker code. Existing D1 data, connector settings, and Cloudflare Secrets are preserved.
+## More documentation
 
-See [Updates](docs/UPDATES.md) for details.
-
-## Main tools
-
-```text
-hub_info
-connector_setup_status
-connector_installation_help
-find_capability
-list_connector_updates
-get_connector_settings_link
-save_connector
-list_connectors
-test_connector
-call_connector_tool
-delete_connector
-fetch_url
-fetch_many_urls
-fetch_rss
-check_url_status
-ai_models_list
-ai_recommend_model
-ai_chat
-agent_team_propose
-agent_team_create
-agent_team_start
-agent_run_status
-agent_run_cancel
-send_notification
-call_webhook
-```
-
-Saved connector actions are also exposed as their own tools. For normal use, prefer those generated tools over `call_connector_tool`.
-
-## Advanced use
-
-Marketplace connectors that need code run as separate protected child Workers. The browser installer creates them with temporary Cloudflare access and registers them automatically. Developers can still deploy and register their own child Workers manually.
-
-See:
-
-- [Agents and agent teams](docs/AGENTS.md)
-- [Child Workers](docs/CHILD_WORKERS.md)
-- [Manual installation](docs/INSTALL.md)
-- [Developer deployment through Git](docs/DEPLOY_TO_CLOUDFLARE.md)
-- [Prompts](docs/PROMPTS.md)
-- [ChatGPT, Claude, and other MCP clients](docs/CLIENTS.md)
+- [W Gateway and plugin packages](docs/W_GATEWAY.md)
+- [Client setup](docs/CLIENTS.md)
+- [Installation](docs/INSTALL.md)
+- [Cloudflare deployment](docs/DEPLOY_TO_CLOUDFLARE.md)
+- [Agents](docs/AGENTS.md)
+- [Plugin Workers](docs/CHILD_WORKERS.md)
+- [Workers AI usage](docs/NEURON_METER.md)
 
 ## License
 

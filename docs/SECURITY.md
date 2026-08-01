@@ -9,24 +9,24 @@ OneAIWorkers lets an AI assistant read public pages and call external services. 
 - It does not run arbitrary code from AI.
 - Child Workers can only use predefined templates.
 - Public URL tools block local and private hosts.
-- Manually created connectors reference Cloudflare Worker Secrets by name.
-- Marketplace connector credentials are encrypted with AES-GCM before they are stored in D1.
+- Manually created plugins reference Cloudflare Worker Secrets by name.
+- Marketplace plugin credentials are encrypted with AES-GCM before they are stored in D1.
 - Tool results hide sensitive URL fields such as `token`, `key`, `secret`, `password`, `auth`, and `signature`.
-- D1 is used for OAuth, the connector registry, encrypted connector credentials, connector actions, and audit records. It is not used for AI memory.
+- D1 is used for OAuth, the plugin registry, encrypted plugin credentials, actions, search data, large-result metadata, and audit records. It is not used for AI memory.
 
-## Marketplace connector credentials
+## Marketplace plugin credentials
 
-The installer creates `CREDENTIALS_MASTER_KEY` as a Cloudflare Secret. The value is never written to Git, the marketplace, or the connector package.
+The installer creates `CREDENTIALS_MASTER_KEY` as a Cloudflare Secret. The value is never written to Git, the marketplace, or a plugin package.
 
 Users enter service keys only on a short-lived settings page hosted by their own OneAIWorkers. The Worker encrypts the values with AES-GCM and context binding before writing them to D1. The marketplace and central installer never receive these service keys.
 
-Connector packages are checked against the catalog checksum. The main Worker accepts an installed child Worker only when the registration receipt has a valid ECDSA signature, matches its own address, has not expired, and has not been used before.
+Plugin packages are checked against the catalog checksum. The main Worker accepts an installed plugin Worker only when the registration receipt has a valid ECDSA signature, matches its own address, has not expired, and has not been used before.
 
 ## MCP access
 
 The normal installer creates `MCP_SHARED_SECRET` automatically. If you install manually, create it yourself before connecting an MCP client.
 
-Knowing only the Worker URL does not grant access to `/mcp`. A new OAuth connection must pass the shared-secret check. Public service pages may expose metadata or update information, but they do not expose saved connector data or secret values.
+Knowing only the Worker URL does not grant access to `/mcp`. A new OAuth connection must pass the shared-secret check. Public service pages may expose metadata or update information, but they do not expose saved plugin data or secret values.
 
 The Worker accepts it in one of these ways:
 
@@ -43,11 +43,11 @@ OAuth requires PKCE with `S256`. Access tokens expire after one hour. Clients ca
 
 The browser installer uses a short-lived Cloudflare OAuth token to create or update Workers. It revokes the token after the operation.
 
-The installed OneAIWorkers does not keep this OAuth token. Marketplace connector installation does not require a permanent `CF_API_TOKEN`.
+The installed OneAIWorkers does not keep this OAuth token. Marketplace plugin installation does not require a permanent `CF_API_TOKEN`.
 
-## Child Worker warning
+## Plugin Worker warning
 
-Marketplace child Workers use their own random access token. The main Worker keeps that token encrypted and calls the child through HTTPS. Knowing only the child Worker address is not enough to call its tools.
+Marketplace plugin Workers use their own random access token. The main Worker keeps that token encrypted and calls the plugin through HTTPS. Knowing only the plugin Worker address is not enough to call its actions.
 
 ## Notifications and webhooks
 

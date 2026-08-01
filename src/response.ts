@@ -107,11 +107,11 @@ function installBrowserAction(data: unknown): { url: string; response_instructio
   const action = (data as { browser_action?: unknown }).browser_action;
   if (!action || typeof action !== "object" || Array.isArray(action)) return null;
   const value = action as { type?: unknown; url?: unknown; response_instruction?: unknown };
-  if (value.type !== "install_connector" || typeof value.url !== "string" || !value.url.startsWith("https://")) return null;
+  if (value.type !== "install_plugin" || typeof value.url !== "string" || !value.url.startsWith("https://")) return null;
   return {
     url: value.url,
     response_instruction: typeof value.response_instruction === "string"
       ? value.response_instruction
-      : "Open this connector installation link in a normal browser. / Відкрийте це посилання встановлення конектора у звичайному браузері.",
+      : "Open this plugin installation link in a normal browser. / Відкрийте це посилання встановлення плагіна у звичайному браузері.",
   };
 }

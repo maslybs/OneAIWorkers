@@ -55,6 +55,9 @@ import {
   aiNeuronStatus,
   aiNeuronStatusSchema,
 } from "../neuron-meter";
+import { checkUrlStatus, checkUrlStatusSchema, fetchManyUrls, fetchManyUrlsSchema, fetchRss, fetchRssSchema, fetchUrl, fetchUrlSchema } from "../observe";
+import { callWebhook, callWebhookSchema, sendNotification, sendNotificationSchema } from "../notify";
+import { createChildWorkerFromTemplate, createChildWorkerSchema, deployCustomChildWorker, deployCustomChildWorkerSchema } from "../factory";
 import type { NativeToolDefinition } from "./types";
 
 function define(
@@ -216,6 +219,54 @@ export const NATIVE_TOOLS: NativeToolDefinition[] = [
     consumes_ai: false,
     requires_confirmation: true,
     handler: (env, args) => agentRunCancel(env, args),
+  }),
+  define("fetch_url", "Reads one public HTTPS page after blocking private and unsafe network targets.", fetchUrlSchema, {
+    read_only: true,
+    consumes_ai: false,
+    requires_confirmation: false,
+    handler: (_env, args) => fetchUrl(args),
+  }),
+  define("fetch_many_urls", "Reads up to ten public HTTPS pages and returns compact results.", fetchManyUrlsSchema, {
+    read_only: true,
+    consumes_ai: false,
+    requires_confirmation: false,
+    handler: (_env, args) => fetchManyUrls(args),
+  }),
+  define("fetch_rss", "Reads recent entries from a public RSS or Atom feed.", fetchRssSchema, {
+    read_only: true,
+    consumes_ai: false,
+    requires_confirmation: false,
+    handler: (_env, args) => fetchRss(args),
+  }),
+  define("check_url_status", "Checks whether a public HTTPS address responds and measures its latency.", checkUrlStatusSchema, {
+    read_only: true,
+    consumes_ai: false,
+    requires_confirmation: false,
+    handler: (_env, args) => checkUrlStatus(args),
+  }),
+  define("send_notification", "Sends a configured Telegram, Discord, Slack, or webhook notification.", sendNotificationSchema, {
+    read_only: false,
+    consumes_ai: false,
+    requires_confirmation: true,
+    handler: (env, args) => sendNotification(env, args),
+  }),
+  define("call_webhook", "Calls a fixed user-provided public HTTPS webhook.", callWebhookSchema, {
+    read_only: false,
+    consumes_ai: false,
+    requires_confirmation: true,
+    handler: (_env, args) => callWebhook(args),
+  }),
+  define("create_child_worker_from_template", "Creates a protected plugin Worker from a reviewed built-in template.", createChildWorkerSchema, {
+    read_only: false,
+    consumes_ai: false,
+    requires_confirmation: true,
+    handler: (env, args) => createChildWorkerFromTemplate(env, args),
+  }),
+  define("deploy_custom_child_worker", "Deploys reviewed custom plugin Worker code when advanced deployment is enabled.", deployCustomChildWorkerSchema, {
+    read_only: false,
+    consumes_ai: false,
+    requires_confirmation: true,
+    handler: (env, args) => deployCustomChildWorker(env, args),
   }),
 ];
 

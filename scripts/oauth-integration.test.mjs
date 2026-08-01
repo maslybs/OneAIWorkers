@@ -145,7 +145,7 @@ async function mcpRequest(baseUrl, accessToken, id, method, params = {}) {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
   assert.equal(response.headers.get("pragma"), "no-cache");
-  assert.equal(response.headers.get("x-oneaiworkers-runtime"), "0.9.8");
+  assert.equal(response.headers.get("x-oneaiworkers-runtime"), "1.0.0");
   assert.match(response.headers.get("vary") || "", /authorization/u);
   return response.json();
 }
@@ -241,46 +241,25 @@ test("OAuth uses S256, rotates refresh tokens, checks resource, revokes, and rat
 
   const listedTools = await mcpRequest(worker.baseUrl, issued.payload.access_token, 100, "tools/list");
   const toolNames = listedTools.result.tools.map((item) => item.name);
-  assert.ok(toolNames.includes("save_connector"));
-  assert.ok(toolNames.includes("connector_setup_status"));
-  assert.ok(toolNames.includes("connector_installation_help"));
+  assert.deepEqual(toolNames.sort(), ["w_agent_run", "w_call", "w_describe", "w_present", "w_result_read", "w_search"]);
 
-  const qualifiedToolCall = await mcpRequest(worker.baseUrl, issued.payload.access_token, 101, "tools/call", {
-    name: "MyWork.connector_setup_status",
-    arguments: { include_connectors: true },
+  const overviewCall = await mcpRequest(worker.baseUrl, issued.payload.access_token, 101, "tools/call", {
+    name: "MyWork.w_search",
+    arguments: { query: "", limit: 8 },
   });
-  assert.equal(qualifiedToolCall.result.isError, false);
-  assert.equal(qualifiedToolCall.result.structuredContent.ok, true);
-  assert.equal(qualifiedToolCall.result.structuredContent.data.ok, true);
+  assert.equal(overviewCall.result.isError, false);
+  assert.ok(Array.isArray(overviewCall.result.structuredContent.data.plugins));
 
   const liveRuntimeCall = await mcpRequest(worker.baseUrl, issued.payload.access_token, 102, "tools/call", {
-    name: "call_connector_tool",
+    name: "w_call",
     arguments: {
-      connector_id: "system",
-      action_name: "runtime_info",
-      input: {},
-      dry_run: false,
-      confirmed: false,
+      tool_ref: "oneaiworkers:system/runtime_info@1.0.0",
+      arguments: {},
     },
   });
   assert.equal(liveRuntimeCall.result.isError, false);
-  assert.equal(liveRuntimeCall.result.structuredContent.data.system, true);
-  assert.equal(liveRuntimeCall.result.structuredContent.data.result.version, "0.9.8");
-  assert.equal(liveRuntimeCall.result.structuredContent.data.gateway_runtime.http_cache, "no-store");
-
-  const cachedRouteCall = await mcpRequest(worker.baseUrl, issued.payload.access_token, 103, "tools/call", {
-    name: "call_connector_tool",
-    arguments: {
-      connector_id: "native",
-      action_name: "get_connector_settings_link",
-      input: { connector_id: "n8n" },
-      dry_run: true,
-      confirmed: false,
-    },
-  });
-  assert.equal(cachedRouteCall.result.isError, false);
-  assert.equal(cachedRouteCall.result.structuredContent.data.system, true);
-  assert.equal(cachedRouteCall.result.structuredContent.data.action_name, "get_connector_settings_link");
+  assert.equal(liveRuntimeCall.result.structuredContent.data.ok, true);
+  assert.equal(liveRuntimeCall.result.structuredContent.data.result.result.version, "1.0.0");
 
   const queryAccess = await fetch(
     `${worker.baseUrl}/mcp?access_token=${encodeURIComponent(issued.payload.access_token)}`,
@@ -304,6 +283,16 @@ test("OAuth uses S256, rotates refresh tokens, checks resource, revokes, and rat
   assert.ok(refreshed.payload.access_token);
   assert.ok(refreshed.payload.refresh_token);
   assert.notEqual(refreshed.payload.refresh_token, issued.payload.refresh_token);
+
+  const afterRefresh = await mcpRequest(worker.baseUrl, refreshed.payload.access_token, 103, "tools/call", {
+    name: "w_call",
+    arguments: {
+      tool_ref: "oneaiworkers:system/runtime_info@1.0.0",
+      arguments: {},
+      search_id: overviewCall.result.structuredContent.data.search_id,
+    },
+  });
+  assert.equal(afterRefresh.result.structuredContent.data.ok, true);
 
   const refreshReplay = await tokenRequest(worker.baseUrl, {
     grant_type: "refresh_token",

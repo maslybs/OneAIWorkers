@@ -44,7 +44,7 @@ import { redactSensitiveText, redactSensitiveValue } from "./security";
 import { checkUrlStatus, checkUrlStatusSchema, fetchManyUrls, fetchManyUrlsSchema, fetchRss, fetchRssSchema, fetchUrl, fetchUrlSchema } from "./tools/observe";
 import { callWebhook, callWebhookSchema, sendNotification, sendNotificationSchema } from "./tools/notify";
 import { createChildWorkerFromTemplate, createChildWorkerSchema, deployCustomChildWorker, deployCustomChildWorkerSchema } from "./tools/factory";
-import { callConnectorTool, callConnectorToolSchema, connectorSetupStatus, connectorSetupStatusSchema, deleteConnector, connectorIdSchema, getConnectorSettingsLink, listConnectorMcpTools, listConnectors, listConnectorsSchema, saveConnector, saveConnectorSchema, testConnector, testConnectorSchema, type ConnectorMcpTool } from "./tools/integrations";
+import { callConnectorToolSchema, connectorSetupStatus, connectorSetupStatusSchema, deleteConnector, connectorIdSchema, getConnectorSettingsLink, listConnectorMcpTools, listConnectors, listConnectorsSchema, saveConnector, saveConnectorSchema, SYSTEM_ACTIONS, testConnector, testConnectorSchema, type ConnectorMcpTool } from "./tools/integrations";
 import { APP_VERSION, getUpdateState, updateNotice } from "./update";
 import {
   connectorInstallationHelp,
@@ -55,6 +55,10 @@ import {
   findCapabilitySchema,
   listConnectorUpdates,
 } from "./marketplace";
+import { createWGatewayServer, registerWGatewayTools, syncWRegistry, wCallLegacyAction } from "./w-gateway";
+import { createWRequestContext } from "./w-gateway/context";
+import type { ExposureMode } from "./w-gateway/types";
+import { NATIVE_TOOLS } from "./tools/native";
 
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: ["mcp"] }] as const;
 
@@ -64,6 +68,7 @@ const WRITE_INTERNAL = { readOnlyHint: false, destructiveHint: false, openWorldH
 const WRITE_EXTERNAL = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
 const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
 const serverUpdateNotices = new WeakMap<McpServer, () => Promise<ReturnType<typeof updateNotice>>>();
+const directGatewayContexts = new WeakMap<McpServer, { env: Env; context: Awaited<ReturnType<typeof createWRequestContext>> }>();
 
 const STATIC_TOOL_NAMES = [
   "hub_info",
@@ -112,14 +117,30 @@ const STATIC_TOOL_NAMES = [
   "deploy_custom_child_worker",
 ];
 
-export async function createMcpServer(env: Env, request: Request): Promise<McpServer> {
+export async function createMcpServer(
+  env: Env,
+  request: Request,
+  exposureMode: ExposureMode = "meta",
+): Promise<McpServer> {
+  if (exposureMode === "meta") return createWGatewayServer(env, request, exposureMode);
+  const server = await createDirectMcpServer(env, request);
+  if (exposureMode === "hybrid") {
+    registerWGatewayTools(server, env, await createWRequestContext(request, env, exposureMode));
+  }
+  return server;
+}
+
+async function createDirectMcpServer(env: Env, request: Request): Promise<McpServer> {
   const baseUrl = buildBaseUrl(request, env);
+  await syncWRegistry(env, { embeddings: true });
+  const gatewayContext = await createWRequestContext(request, env, "direct");
   const server = new McpServer({
     name: env.HUB_NAME || "OneAIWorkers",
     version: APP_VERSION,
   });
   const getNotice = async () => updateNotice(await getUpdateState(env, baseUrl));
   serverUpdateNotices.set(server, getNotice);
+  directGatewayContexts.set(server, { env, context: gatewayContext });
 
   const { connectorTools, connectorToolError } = await loadConnectorTools(env);
 
@@ -232,7 +253,14 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
   tool(server, "list_connectors", "List connector actions", bi("Stable live discovery gateway. Reads current saved connectors from D1 and lists virtual system and native actions. Set include_actions=true when the MCP client has a frozen top-level tool snapshot.", "Стабільний живий gateway пошуку. Читає поточні збережені конектори з D1 і показує віртуальні системні та native дії. Встановіть include_actions=true, якщо MCP-клієнт має застарілий список верхньорівневих команд."), listConnectorsSchema, (args) => listConnectors(env, args), READ_ONLY);
   tool(server, "save_connector", "Save API connector", bi("Creates or updates an API connector manifest. The connector is immediately available through list_connectors and call_connector_tool. A later MCP tool-list refresh only adds top-level shortcut tools. Secrets must be referenced by Cloudflare secret name, never placed directly in the manifest.", "Створює або оновлює налаштування API-конектора. Конектор одразу доступний через list_connectors і call_connector_tool. Подальше оновлення списку MCP-команд лише додає окремі короткі команди. Секрети треба вказувати тільки за назвою Cloudflare secret, ніколи не вставляти значення напряму."), saveConnectorSchema, (args) => saveConnector(env, args), WRITE_EXTERNAL);
   tool(server, "test_connector", "Test connector action", bi("Tests a saved connector action. Defaults to dry_run=true, which prepares the HTTP request without calling the external API. Use this before real calls or when a generated top-level tool fails.", "Тестує збережену дію connector. За замовчуванням dry_run=true: готує HTTP запит без виклику зовнішнього API. Використовуйте перед реальними викликами або коли generated top-level tool падає."), testConnectorSchema, (args) => testConnector(env, args, baseUrl), READ_EXTERNAL);
-  tool(server, "call_connector_tool", "Call current action", bi("Stable live invocation gateway. Calls actions discovered through list_connectors from the current system, native registry, or D1 connector registry. Use connector_id=system for management and connector_id=native for AI/agent actions. Known system actions also work through native for older clients.", "Стабільний живий gateway виклику. Запускає дії, знайдені через list_connectors, із поточного системного, native або D1 реєстру. Для керування використовуйте connector_id=system, а для дій AI та агентів — connector_id=native. Відомі системні дії також працюють через native для старих клієнтів."), callConnectorToolSchema, (args) => callConnectorTool(env, args, baseUrl), WRITE_EXTERNAL);
+  tool(server, "call_connector_tool", "Call current action", bi("Legacy compatibility method. Runs only an operation already published in the plugin registry and applies the same permissions and confirmation rules as w_call.", "Старий метод сумісності. Виконує лише дію, яка вже опублікована в реєстрі плагінів, і застосовує ті самі права та правила підтвердження, що й w_call."), callConnectorToolSchema, (args) => wCallLegacyAction(env, gatewayContext, {
+    plugin_id: args.connector_id,
+    action_name: args.action_name,
+    arguments: args.input,
+    dry_run: args.dry_run,
+    confirmation_token: args.confirmation_token,
+    idempotency_key: args.idempotency_key,
+  }), WRITE_EXTERNAL);
   tool(server, "delete_connector", "Delete connector", bi("Deletes a saved connector and all of its actions from D1. Its generated top-level MCP tools disappear on the next tools/list refresh. Use only when the user explicitly asks to remove a connector.", "Видаляє збережений connector і всі його actions з D1. Його generated top-level MCP tools зникнуть при наступному tools/list refresh. Використовуйте тільки коли користувач явно просить видалити connector."), connectorIdSchema, (args) => deleteConnector(env, args), DESTRUCTIVE);
 
   tool(server, "fetch_url", "Fetch URL", bi("Fetches a public HTTPS URL and returns text suitable for LLM interpretation. Blocks local/private hosts and unsafe outbound targets.", "Отримує публічний HTTPS URL і повертає текст для інтерпретації LLM. Блокує local/private hosts і небезпечні outbound targets."), fetchUrlSchema, fetchUrl, READ_EXTERNAL);
@@ -273,7 +301,7 @@ export async function createMcpServer(env: Env, request: Request): Promise<McpSe
   tool(server, "create_child_worker_from_template", "Create child Worker from template", bi("Advanced builder: deploys a protected child Cloudflare Worker from a reviewed safe template. The child is meant to be used through the main OneAIWorkers gateway; direct API access is optional and requires an explicit token.", "Розширений builder: деплоїть захищений child Cloudflare Worker з перевіреного безпечного шаблону. Child має використовуватись через основний OneAIWorkers gateway; прямий API доступ опційний і вимагає окремий token."), createChildWorkerSchema, (args) => createChildWorkerFromTemplate(env, args), WRITE_EXTERNAL);
   tool(server, "deploy_custom_child_worker", "Deploy custom child Worker", bi("Advanced Worker Builder: deploys reviewed custom JavaScript as a separate protected child Worker only when allow_custom_code=true. Register it as a connector so the MCP client sees its actions as normal OneAIWorkers tools.", "Розширений Worker Builder: розгортає перевірений JavaScript як окремий захищений дочірній Worker лише коли allow_custom_code=true. Зареєструйте його як конектор, щоб MCP-клієнт бачив його дії як звичайні інструменти OneAIWorkers."), deployCustomChildWorkerSchema, (args) => deployCustomChildWorker(env, args), WRITE_EXTERNAL);
 
-  registerConnectorTools(server, env, baseUrl, connectorTools);
+  registerConnectorTools(server, env, gatewayContext, connectorTools);
 
   return server;
 }
@@ -287,21 +315,46 @@ function tool<T extends z.ZodRawShape>(
   handler: (args: z.infer<z.ZodObject<T>>) => Promise<unknown> | unknown,
   annotations: Record<string, boolean>,
 ) {
+  const directRoute = directGatewayContexts.get(server);
+  const routePluginId = NATIVE_TOOLS.some((item) => item.name === name)
+    ? "native"
+    : SYSTEM_ACTIONS.some((item) => item.name === name) && name !== "call_connector_tool"
+      ? "system"
+      : null;
+  const routedInputSchema = directRoute && routePluginId
+    ? {
+        ...inputSchema,
+        confirmation_token: z.string().min(20).max(300).optional(),
+        idempotency_key: z.string().min(1).max(200).optional(),
+      }
+    : inputSchema;
   const callback = (async (args: unknown) => safeRun(
-    () => handler(args as z.infer<z.ZodObject<T>>),
+    () => directRoute && routePluginId
+      ? wCallLegacyAction(directRoute.env, directRoute.context, {
+          plugin_id: routePluginId,
+          action_name: name,
+          arguments: connectorInput(args as Record<string, unknown>),
+          confirmation_token: typeof (args as Record<string, unknown>).confirmation_token === "string"
+            ? String((args as Record<string, unknown>).confirmation_token)
+            : undefined,
+          idempotency_key: typeof (args as Record<string, unknown>).idempotency_key === "string"
+            ? String((args as Record<string, unknown>).idempotency_key)
+            : undefined,
+        })
+      : handler(args as z.infer<z.ZodObject<T>>),
     serverUpdateNotices.get(server),
   )) as never;
   const descriptor = {
     title,
     description,
-    inputSchema,
+    inputSchema: routedInputSchema,
     securitySchemes: OAUTH_SECURITY_SCHEMES,
     annotations,
   } as never;
   server.registerTool(name, descriptor, callback);
 }
 
-function registerConnectorTools(server: McpServer, env: Env, baseUrl: string, connectorTools: ConnectorMcpTool[]) {
+function registerConnectorTools(server: McpServer, env: Env, gatewayContext: Awaited<ReturnType<typeof createWRequestContext>>, connectorTools: ConnectorMcpTool[]) {
   const usedNames = new Set(STATIC_TOOL_NAMES);
   for (const connectorTool of connectorTools) {
     const toolName = uniqueToolName(connectorTool.tool_name, usedNames);
@@ -314,6 +367,8 @@ function registerConnectorTools(server: McpServer, env: Env, baseUrl: string, co
       ...inputSchemaFromJsonSchema(connectorTool.input_schema),
       dry_run: z.boolean().default(false).describe(biInline("If true, prepare the routed request without calling the connector.", "Якщо true, підготувати routed request без виклику connector.")),
       confirmed: z.boolean().default(false).describe(biInline("Optional explicit user confirmation for side-effect actions.", "Опційне явне підтвердження користувача для actions із side effects.")),
+      confirmation_token: z.string().min(20).max(300).optional(),
+      idempotency_key: z.string().min(1).max(200).optional(),
     };
     tool(
       server,
@@ -323,20 +378,14 @@ function registerConnectorTools(server: McpServer, env: Env, baseUrl: string, co
       inputSchema,
       (args) => {
         const dryRun = Boolean(args.dry_run);
-        const confirmed = Boolean(args.confirmed);
-        if (!dryRun && connectorTool.side_effect && !confirmed) {
-          throw new Error(biInline(
-            "This connector tool can create an external side effect. Retry with confirmed=true after the user clearly approves the action.",
-            "Цей connector tool може створити зовнішній side effect. Повторіть з confirmed=true після явного підтвердження користувача.",
-          ));
-        }
-        return callConnectorTool(env, {
-          connector_id: connectorTool.connector_id,
+        return wCallLegacyAction(env, gatewayContext, {
+          plugin_id: connectorTool.connector_id,
           action_name: connectorTool.action_name,
-          input: connectorInput(args),
+          arguments: connectorInput(args),
           dry_run: dryRun,
-          confirmed,
-        }, baseUrl);
+          confirmation_token: typeof args.confirmation_token === "string" ? args.confirmation_token : undefined,
+          idempotency_key: typeof args.idempotency_key === "string" ? args.idempotency_key : undefined,
+        });
       },
       annotations,
     );
@@ -373,7 +422,7 @@ async function loadConnectorTools(env: Env): Promise<{ connectorTools: Connector
 function connectorInput(args: Record<string, unknown>): Record<string, unknown> {
   const input: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args || {})) {
-    if (key === "dry_run" || key === "confirmed") continue;
+    if (key === "dry_run" || key === "confirmed" || key === "confirmation_token" || key === "idempotency_key") continue;
     input[key] = value;
   }
   return input;
@@ -444,8 +493,8 @@ function configuredFlags(env: Env) {
     workers_ai: Boolean(env.AI),
     agent_manager: Boolean(env.AGENT_MANAGER),
     encrypted_credentials: Boolean(env.CREDENTIALS_MASTER_KEY),
-    connector_installer_signature: Boolean(env.CONNECTOR_INSTALLER_PUBLIC_KEY),
-    marketplace: Boolean(env.MARKETPLACE_CATALOG_URL || env.CONNECTOR_INSTALLER_URL),
+    plugin_installer_signature: Boolean(env.PLUGIN_INSTALLER_PUBLIC_KEY || env.CONNECTOR_INSTALLER_PUBLIC_KEY),
+    marketplace: Boolean(env.MARKETPLACE_CATALOG_URL || env.PLUGIN_INSTALLER_URL),
     worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
   };
 }

@@ -20,15 +20,15 @@ The recommended authentication method is OAuth. When the OneAIWorkers sign-in pa
 
 ## Claude
 
-The simplest method is the remote connector screen:
+The simplest method is Claude's remote MCP screen:
 
-1. Open **Customize → Connectors**.
-2. Choose **Add custom connector**.
+1. Open **Customize**.
+2. Choose the option for adding a custom remote MCP server.
 3. Paste the `/mcp` address.
 4. Leave optional Client ID and Client Secret fields empty.
 5. Connect and enter the OneAIWorkers access secret when asked.
 
-Claude supports remote connectors through its account. Availability and organization permissions depend on the Claude plan. See the [official Claude connector guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+Claude supports remote MCP servers through its account. Availability and organization permissions depend on the Claude plan.
 
 ### Claude Desktop configuration file
 
@@ -61,6 +61,6 @@ If a client supports only local `stdio` servers, use a bridge such as `mcp-remot
 
 Never place the access secret in the URL.
 
-## After adding or changing a connector
+## After adding or changing a plugin
 
-The connector is available immediately through `list_connectors` and `call_connector_tool`. Refreshing or reconnecting is optional and only adds top-level shortcuts such as `n8n_list_workflows`.
+The plugin is available immediately through `w_search`. The public command list never changes, so refreshing or reconnecting is not required.

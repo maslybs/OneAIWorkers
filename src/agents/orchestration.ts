@@ -25,7 +25,7 @@ export class AgentOrchestrator {
     private readonly repository: AgentRepository,
   ) {}
 
-  async startRun(teamId: string, task: string, budgetOverride?: number): Promise<RunRecord> {
+  async startRun(teamId: string, task: string, budgetOverride?: number, maxSteps?: number): Promise<RunRecord> {
     if (!this.env.AI) throw new Error("Workers AI binding is not configured.");
     const team = this.repository.requireTeam(teamId);
     if (!team.enabled) throw new Error("The agent team is disabled.");
@@ -33,6 +33,12 @@ export class AgentOrchestrator {
     const agents = team.member_agent_ids.map((id) => this.repository.requireAgent(id));
     if (agents.some((agent) => !agent.enabled)) {
       throw new Error("One or more agents in the team are disabled.");
+    }
+
+    const plannedSteps = 1 + team.max_rounds * agents.length;
+    const effectiveMaxSteps = maxSteps ?? plannedSteps;
+    if (plannedSteps > effectiveMaxSteps) {
+      throw new Error(`This agent team needs ${plannedSteps} steps, which exceeds the requested limit of ${effectiveMaxSteps}.`);
     }
 
     const estimate = estimateTeamCost(team, agents);
@@ -59,6 +65,8 @@ export class AgentOrchestrator {
       state: {
         round: 1,
         member_index: 0,
+        max_steps: effectiveMaxSteps,
+        steps_completed: 0,
         outputs: [],
         usage: {
           input_tokens: 0,
@@ -100,12 +108,14 @@ export class AgentOrchestrator {
 
     try {
       if (run.stage === "planning") {
+        ensureStepAvailable(run);
         const prompt = [
           `Task: ${run.task}`,
           `Team members: ${members.map((agent) => `${agent.name} — ${agent.role}`).join("; ")}`,
           "Create a concise delegation plan. Assign one concrete deliverable to each specialist and define the final acceptance criteria.",
         ].join("\n\n");
         const call = await this.callAgent(run.id, coordinator, prompt);
+        run.state.steps_completed += 1;
         run.state.coordinator_plan = call.text;
         addUsage(run.state.usage, call);
         run.stage = "members";
@@ -116,6 +126,7 @@ export class AgentOrchestrator {
 
       if (run.stage === "members") {
         if (run.state.member_index < members.length) {
+          ensureStepAvailable(run);
           const agent = members[run.state.member_index];
           const previous = run.state.outputs
             .filter((item) => item.agent_id === agent.id)
@@ -129,6 +140,7 @@ export class AgentOrchestrator {
             "Produce your assigned deliverable. Be explicit about assumptions, risks, and unresolved questions.",
           ].filter(Boolean).join("\n\n");
           const call = await this.callAgent(run.id, agent, prompt);
+          run.state.steps_completed += 1;
           run.state.outputs.push({
             agent_id: agent.id,
             agent_name: agent.name,
@@ -147,6 +159,7 @@ export class AgentOrchestrator {
       }
 
       if (run.stage === "feedback") {
+        ensureStepAvailable(run);
         const prompt = [
           `Task: ${run.task}`,
           `Round ${run.state.round} specialist outputs:`,
@@ -154,6 +167,7 @@ export class AgentOrchestrator {
           "Review the outputs. Identify contradictions, missing evidence, and concrete revision instructions for the next round.",
         ].join("\n\n");
         const call = await this.callAgent(run.id, coordinator, prompt);
+        run.state.steps_completed += 1;
         run.state.feedback = call.text;
         run.state.round += 1;
         run.state.member_index = 0;
@@ -163,6 +177,7 @@ export class AgentOrchestrator {
         return;
       }
 
+      ensureStepAvailable(run);
       const prompt = [
         `Task: ${run.task}`,
         `Coordinator plan: ${run.state.coordinator_plan || "No plan available."}`,
@@ -171,6 +186,7 @@ export class AgentOrchestrator {
         "Synthesize one final result. Resolve conflicts, separate verified conclusions from assumptions, and finish with recommended next actions.",
       ].join("\n\n");
       const call = await this.callAgent(run.id, coordinator, prompt);
+      run.state.steps_completed += 1;
       addUsage(run.state.usage, call);
       run.final_result = call.text;
       run.status = "completed";
@@ -226,5 +242,11 @@ export class AgentOrchestrator {
         ?? 0,
       token_source: result.billing.source,
     };
+  }
+}
+
+function ensureStepAvailable(run: RunRecord): void {
+  if (run.state.steps_completed >= run.state.max_steps) {
+    throw new Error(`The agent run reached its ${run.state.max_steps}-step limit.`);
   }
 }

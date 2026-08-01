@@ -1,87 +1,34 @@
-# Child Workers і gateway routing
+# Workers плагінів і маршрутизація
 
-OneAIWorkers має показувати ChatGPT один MCP endpoint:
-
-```text
-ChatGPT -> OneAIWorkers /mcp -> generated top-level tool -> internal connector або child Worker -> external API
-```
-
-ChatGPT не має викликати child Workers напряму. Після збереження connector його actions показуються як first-class OneAIWorkers tools, наприклад:
+OneAIWorkers показує одну сталу MCP-адресу:
 
 ```text
-tg_getme
-tg_send_message
-n8n_list_workflows
-crm_create_lead
+ChatGPT або Claude -> OneAIWorkers /mcp -> W Gateway -> Worker плагіна -> зовнішній сервіс
 ```
 
-Generic `call_connector_tool` залишається для debug і advanced use, але нормальний ChatGPT UX має використовувати generated top-level tools.
+MCP-клієнт не викликає Worker плагіна напряму. Він шукає дії через `w_search`, завантажує вибрану схему через `w_describe`, а потім виконує дію через `w_call` або `w_present`.
 
-## Режими виклику child Worker
+## Способи виклику
 
-### 1. Private production mode: Service Binding
+### Приватна прив’язка Cloudflare
 
-Використовуйте Cloudflare Service Binding, коли child Worker не має мати public endpoint.
+Використовуйте Cloudflare Service Binding, якщо Worker плагіна не має публічної адреси. Це рекомендований спосіб для приватного плагіна, який розробник розгортає вручну.
 
-Приклад `wrangler.toml`:
+### Захищена адреса Worker
 
-```toml
-[[services]]
-binding = "TELEGRAM_CHILD"
-service = "telegram-child-connector"
-```
+Встановлювач може розгорнути Worker плагіна із захищеною адресою. Він створює окремий випадковий ключ, зберігає його зашифрованим у D1 основного Worker і реєструє лише перевірені дії з підписаного пакунка.
 
-Приклад connector:
+Worker плагіна має перевіряти `x-oneaiworkers-child-token` під час кожного виклику. Самої адреси недостатньо для доступу.
 
-```json
-{
-  "connector_id": "tg",
-  "name": "Telegram",
-  "mode": "child_worker",
-  "child_worker_binding": "TELEGRAM_CHILD",
-  "actions": [
-    {
-      "name": "getme",
-      "description": "Read-only. Returns Telegram bot profile. Does not send messages.",
-      "method": "GET",
-      "url": "https://child.local/tools/call",
-      "auth": { "type": "none" },
-      "input_schema": { "type": "object", "properties": {}, "additionalProperties": false }
-    }
-  ]
-}
-```
+## Робота реєстру
 
-ChatGPT бачитиме `tg_getme`, а OneAIWorkers під капотом викличе `env.TELEGRAM_CHILD.fetch(...)`.
+- Версії плагінів незмінні.
+- Кожна дія має версію: `<plugin_id>:<capability_id>/<method>@<version>`.
+- Встановлення й оновлення відбувається через браузер і потребує дозволу користувача у Cloudflare.
+- Основний Worker перевіряє контрольну суму з каталогу та підписане підтвердження встановлення.
+- Додавання або оновлення плагіна не змінює `tools/list`.
+- Основний W Gateway перевіряє права та підтвердження до виклику плагіна.
 
-### 2. Dynamic/fallback mode: protected child URL
+## Прямий доступ
 
-Використовуйте protected URL, коли child Worker створюється динамічно або Service Binding не налаштований.
-
-```json
-{
-  "connector_id": "tg",
-  "name": "Telegram",
-  "mode": "child_worker",
-  "child_worker_url": "https://telegram-child-connector.example.workers.dev",
-  "child_worker_token_secret": "TELEGRAM_CHILD_CONNECTOR_TOKEN",
-  "actions": []
-}
-```
-
-Значення token треба зберегти як Cloudflare Secret в основному Worker. Child Worker має перевіряти header `x-oneaiworkers-child-token`.
-
-Якщо `workers.dev` domain вимкнений або до child Worker не підключений route/custom domain, protected URL mode не працюватиме. Для private production routing використовуйте Service Binding або увімкніть/підключіть domain для цього child Worker.
-
-## Прямий доступ до child Worker
-
-Прямий доступ до child Worker — опційний. Це має бути plain API endpoint, не окремий MCP server. Якщо користувач явно хоче direct access, залишайте його захищеним окремим token і документуйте як API endpoint, а не як ChatGPT connector.
-
-## Security defaults
-
-- Основний MCP endpoint — єдиний gateway для ChatGPT.
-- Child Workers за замовчуванням є internal execution backends.
-- Child Workers мають вимагати `x-oneaiworkers-child-token`, якщо доступні через URL.
-- Для private production child Workers використовуйте Service Bindings.
-- Для дочірніх Workers, створених вручну, зберігайте ключі як секрети Cloudflare.
-- Службові ключі дочірніх Workers із каталогу та ключі підключених сервісів основний Worker шифрує перед записом у D1.
+Прямий доступ до Worker плагіна є окремим захищеним API, а не ще одним MCP-сервером. Для нього потрібні окремі правила доступу. Він не повинен випадково обходити основний шлюз.

@@ -91,7 +91,7 @@ function parsePublicKey(value: string): ArrayBuffer {
     .replace(/-----BEGIN PUBLIC KEY-----/g, "")
     .replace(/-----END PUBLIC KEY-----/g, "")
     .replace(/\s+/g, "");
-  if (!clean) throw new Error("CONNECTOR_INSTALLER_PUBLIC_KEY is not configured.");
+  if (!clean) throw new Error("PLUGIN_INSTALLER_PUBLIC_KEY is not configured.");
   const bytes = Uint8Array.from(atob(clean), (character) => character.charCodeAt(0));
   return bytes.buffer;
 }

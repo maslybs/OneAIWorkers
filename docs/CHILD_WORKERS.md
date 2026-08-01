@@ -1,87 +1,34 @@
-# Child Workers and gateway routing
+# Plugin Workers and gateway routing
 
-OneAIWorkers is designed to expose a single MCP endpoint to ChatGPT:
-
-```text
-ChatGPT -> OneAIWorkers /mcp -> generated top-level tool -> internal connector or child Worker -> external API
-```
-
-ChatGPT should not need to call child Workers directly. After a connector is saved, its actions are exposed as first-class OneAIWorkers tools, for example:
+OneAIWorkers exposes one stable MCP endpoint:
 
 ```text
-tg_getme
-tg_send_message
-n8n_list_workflows
-crm_create_lead
+ChatGPT or Claude -> OneAIWorkers /mcp -> W Gateway -> plugin Worker -> external service
 ```
 
-The generic `call_connector_tool` remains available for debugging and advanced use, but normal ChatGPT usage should prefer the generated top-level tools.
+The MCP client never calls a plugin Worker directly. It searches actions through `w_search`, loads a selected schema through `w_describe`, and runs it through `w_call` or `w_present`.
 
-## Child Worker routing modes
+## Routing modes
 
-### 1. Private production mode: Service Binding
+### Private Service Binding
 
-Use a Cloudflare Service Binding when the child Worker should not have a public endpoint.
+Use a Cloudflare Service Binding when the plugin Worker has no public address. This is the preferred mode for a manually deployed private plugin.
 
-`wrangler.toml` example:
+### Protected Worker address
 
-```toml
-[[services]]
-binding = "TELEGRAM_CHILD"
-service = "telegram-child-connector"
-```
+The marketplace installer may deploy a plugin Worker with a protected address. It creates a separate random token, stores it encrypted in the main Worker's D1, and registers only the reviewed actions from the signed package.
 
-Connector example:
+The plugin Worker must check `x-oneaiworkers-child-token` on every call. Knowing its address is not enough to use it.
 
-```json
-{
-  "connector_id": "tg",
-  "name": "Telegram",
-  "mode": "child_worker",
-  "child_worker_binding": "TELEGRAM_CHILD",
-  "actions": [
-    {
-      "name": "getme",
-      "description": "Read-only. Returns Telegram bot profile. Does not send messages.",
-      "method": "GET",
-      "url": "https://child.local/tools/call",
-      "auth": { "type": "none" },
-      "input_schema": { "type": "object", "properties": {}, "additionalProperties": false }
-    }
-  ]
-}
-```
+## Registry behavior
 
-ChatGPT will see `tg_getme`; OneAIWorkers will call `env.TELEGRAM_CHILD.fetch(...)` internally.
+- Plugin versions are immutable.
+- Every action has a versioned reference: `<plugin_id>:<capability_id>/<method>@<version>`.
+- Installation and updates go through the browser and require the user's Cloudflare approval.
+- The main Worker checks the marketplace checksum and signed registration receipt.
+- Adding or updating a plugin does not change `tools/list`.
+- Permissions and confirmations are checked in the main W Gateway before any plugin call.
 
-### 2. Dynamic/fallback mode: protected child URL
+## Direct access
 
-Use a protected URL when the child Worker is created dynamically or when Service Binding is not configured.
-
-```json
-{
-  "connector_id": "tg",
-  "name": "Telegram",
-  "mode": "child_worker",
-  "child_worker_url": "https://telegram-child-connector.example.workers.dev",
-  "child_worker_token_secret": "TELEGRAM_CHILD_CONNECTOR_TOKEN",
-  "actions": []
-}
-```
-
-The token value must be stored as a Cloudflare Secret on the main Worker. The child Worker must check the `x-oneaiworkers-child-token` header.
-
-If the `workers.dev` domain is disabled, or no route/custom domain is attached to the child Worker, protected URL mode will not work. Use a Service Binding for private production routing or enable/attach a domain for that child Worker.
-
-## Direct child access
-
-Direct child Worker access is optional and should be treated as a plain API endpoint, not as a separate MCP server. If a user explicitly wants direct access, keep it protected with a separate token and document the endpoint as an API, not as a ChatGPT connector.
-
-## Security defaults
-
-- Main MCP endpoint is the only ChatGPT-facing gateway.
-- Child Workers are internal execution backends by default.
-- Child Workers must require `x-oneaiworkers-child-token` when accessed by URL.
-- Use Service Bindings for private production child Workers.
-- For manual child Workers, store tokens as Cloudflare Secrets.
-- Marketplace child tokens and service credentials are encrypted by the main Worker before D1 storage.
+Direct plugin Worker access is optional and should be treated as a separate protected API, not as another MCP server. It must use a different access policy and must never bypass the main gateway by accident.

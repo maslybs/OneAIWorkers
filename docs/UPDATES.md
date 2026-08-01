@@ -2,6 +2,8 @@
 
 [Українська версія](UPDATES.uk.md)
 
+Existing installations keep working when the installer signing key still uses its former Cloudflare secret name. New installations use `PLUGIN_INSTALLER_PUBLIC_KEY`.
+
 Every installed OneAIWorkers has its own update page:
 
 ```text
@@ -24,7 +26,7 @@ MCP cannot show a notification while the client is not using the Worker. A succe
 4. Confirm the update.
 5. Return to the chat. The stable live gateway works without reconnecting. Refresh only if you want new top-level shortcut tools to appear.
 
-The update service verifies through Cloudflare that the Worker belongs to the selected account. It replaces only the Worker code. Existing D1 data, connector settings, bindings, and Cloudflare Secrets are preserved.
+The update service verifies through Cloudflare that the Worker belongs to the selected account. It replaces only the Worker code. Existing D1 data, plugin settings, bindings, and Cloudflare Secrets are preserved.
 
 The update link contains no keys, tokens, or secrets.
 

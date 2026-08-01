@@ -19,7 +19,7 @@ class_name = "AgentManager"
 tag = "v1-agents"
 new_sqlite_classes = ["AgentManager"]
 
-# D1 is used for OAuth, connector registry, connector actions, and audit records.
+# D1 is used for OAuth, the plugin registry, schemas, embeddings, permissions, and audit records.
 [[d1_databases]]
 binding = "OAUTH_DB"
 database_name = "oneaiworkers-oauth"
@@ -27,8 +27,8 @@ database_id = "ebb15e8a-1131-4c27-b5ff-6914340deb2a"
 
 [vars]
 HUB_NAME = "OneAIWorkers"
-MARKETPLACE_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker&type=connector"
-CONNECTOR_INSTALLER_URL = "https://workers.bgdn.dev"
+MARKETPLACE_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker"
+PLUGIN_INSTALLER_URL = "https://workers.bgdn.dev"
 # Update checks use the official manifest by default. These values are optional overrides.
 # UPDATE_CHECK_ENABLED = "true"
 # UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/maslybs/OneAIWorkers/main/update-manifest.json"
@@ -39,8 +39,8 @@ CONNECTOR_INSTALLER_URL = "https://workers.bgdn.dev"
 
 # Required secret. Set once with `npx wrangler secret put MCP_SHARED_SECRET` or via Dashboard as Secret.
 # MCP_SHARED_SECRET        - required; protects the OAuth connect page and shared-secret access
-# CREDENTIALS_MASTER_KEY   - required for marketplace connectors; encrypts their keys before D1 storage
-# CONNECTOR_INSTALLER_PUBLIC_KEY - public ECDSA key used to verify installer receipts
+# CREDENTIALS_MASTER_KEY   - required for marketplace plugins; encrypts their keys before D1 storage
+# PLUGIN_INSTALLER_PUBLIC_KEY - public ECDSA key used to verify installer receipts
 
 # Optional secrets. Set them with `npx wrangler secret put <NAME>`.
 # TELEGRAM_BOT_TOKEN       - Telegram Bot API token

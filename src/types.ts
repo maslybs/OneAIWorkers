@@ -12,15 +12,22 @@ export interface Env {
   UPDATE_MANIFEST_URL?: string;
   UPDATE_SERVICE_URL?: string;
   MARKETPLACE_CATALOG_URL?: string;
-  CONNECTOR_INSTALLER_URL?: string;
+  PLUGIN_INSTALLER_URL?: string;
+  PLUGIN_INSTALLER_PUBLIC_KEY?: string;
   CONNECTOR_INSTALLER_PUBLIC_KEY?: string;
   CREDENTIALS_MASTER_KEY?: string;
 
-  // D1 database used for OAuth, connector registry, and audit records.
+  // D1 database used for OAuth, the plugin registry, and audit records.
   OAUTH_DB?: D1Database;
 
   // Native Cloudflare Workers AI binding configured as [ai] binding = "AI".
   AI?: WorkersAiBinding;
+
+  // Optional R2 storage for W Gateway results larger than the inline MCP limit.
+  W_RESULTS_BUCKET?: R2Bucket;
+  W_EMBEDDING_MODEL?: string;
+  W_ENABLE_LEGACY_DIRECT?: string;
+  W_ADMIN_SECRET?: string;
 
   // SQLite-backed Durable Object namespace for data-defined agents and teams.
   AGENT_MANAGER?: DurableObjectNamespace;

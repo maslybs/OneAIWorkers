@@ -44,6 +44,8 @@ export function teamFromRow(row: TeamRow): TeamRecord {
 
 export function runFromRow(row: RunRow): RunRecord {
   const state = JSON.parse(row.state_json) as RunStateData;
+  state.steps_completed ??= (state.usage?.reported_token_calls ?? 0) + (state.usage?.estimated_token_calls ?? 0);
+  state.max_steps ??= Number.MAX_SAFE_INTEGER;
   state.usage = {
     input_tokens: state.usage?.input_tokens ?? 0,
     output_tokens: state.usage?.output_tokens ?? 0,

@@ -1,109 +1,45 @@
-# MCP tools
+# MCP commands
 
 [Ukrainian version](TOOLS.uk.md)
 
-OneAIWorkers gives an AI assistant a small set of tools.
+OneAIWorkers exposes the same six commands to ChatGPT, Claude, and every other supported MCP client.
 
-The AI assistant remembers, compares, and decides. The Worker only performs the action.
+## `w_search`
 
-## `hub_info`
+Finds allowed actions in installed plugins and approved executable skills. It combines exact matching, D1 full-text search, and Workers AI meaning search. The result is compact and does not contain full schemas.
 
-Shows what OneAIWorkers can do and which optional services are configured.
+Use an empty query to get a short overview. When a needed plugin is not installed, the result may include the exact browser link to the marketplace flow.
 
-## Marketplace connectors
+## `w_describe`
 
-### `connector_installation_help`
+Loads stored input and output schemas for up to ten exact action references. Use it after `w_search` and before `w_call`.
 
-Use this when the user asks how to install a connector but has not named a service or required capability yet. It returns the real flow and prevents invented Marketplace sections or unverified connector claims.
+## `w_call`
 
-### `find_capability`
+Runs one installed immutable action. It accepts an action reference and arguments, never an arbitrary address or request method.
 
-Finds a cloud connector for a named service or user task. It downloads the public catalog and ranks it inside the user's Worker, so the task text is not sent to the marketplace. A match includes the exact browser installation link. Only returned matches may be described as available.
+Before execution OneAIWorkers checks permissions, account connection, schema, scopes, one-time confirmation, and repeat protection. A risky action returns a protected browser link. It cannot run until the user opens that link and approves it; an agent cannot approve itself.
 
-### `list_connector_updates`
+## `w_present`
 
-Checks installed marketplace connectors and returns a browser update link when a newer package is available.
+Runs an action whose natural result is visual, such as an image, preview, screenshot, render, or diagram. Normal JSON, lists, logs, and source code use `w_call`.
 
-### `get_connector_settings_link`
+## `w_result_read`
 
-Creates a short-lived, one-time browser link for adding or changing a connector's credentials. Never ask the user to send an API key in chat.
+Reads a bounded part of a large result stored by OneAIWorkers. The same tenant, user, endpoint, and session must own the result.
 
-### `list_connectors` and `call_connector_tool`
+## `w_agent_run`
 
-These are the permanent live discovery and invocation tools. They read the current D1 registry on every call.
+Starts an approved agent or agent team with step and budget limits. Agents use the same plugin permissions and cannot approve their own risky actions.
 
-- Use `connector_id: system` for installation, settings, updates, saving, testing, and deletion.
-- Use `connector_id: native` for current Workers AI and agent actions.
-- Saved connectors use their own `connector_id`.
-
-Known system actions also work through `native` for older clients. Refreshing the client is optional and only adds shortcut tools.
-
-### `save_connector`
-
-Developer option for direct HTTP APIs. It stores the manifest in D1 and references Cloudflare Secrets by name. Ready marketplace packages do not require this manual step.
-
-## Reading and checking
-
-### `fetch_url`
-
-Reads one public HTTPS page and returns text.
-
-Use it to:
-
-- watch a page for changes;
-- check competitor prices;
-- read public documentation;
-- inspect a public JSON or text endpoint.
-
-### `fetch_many_urls`
-
-Reads up to 10 public HTTPS pages in one call.
-
-Use it for several pages or competitors.
-
-### `fetch_rss`
-
-Reads an RSS or Atom feed and returns recent items.
-
-Use it for news, blogs, changelogs, or research.
-
-### `check_url_status`
-
-Checks if a public URL works and how long it takes to respond.
-
-Use it for website or API health checks.
-
-## Actions
-
-### `send_notification`
-
-Sends a message to Telegram, Discord, Slack, or a webhook.
-
-### `call_webhook`
-
-Calls an HTTPS webhook with JSON data.
-
-Use it to trigger Make, Zapier, n8n, or your own system.
-
-## Worker creation
-
-### `create_child_worker_from_template`
-
-Creates a child Cloudflare Worker from a safe template.
-
-Current template:
-
-- `webhook-forwarder`: forwards POST, PUT, and PATCH requests to a configured HTTPS endpoint.
-
-This is an older developer option. Marketplace child Workers use the browser installer and do not need permanent Cloudflare API credentials.
-
-## Common workflow
+## Recommended flow
 
 ```text
-Scheduled AI run
-  -> read or check data with OneAIWorkers
-  -> compare with AI memory
-  -> decide what matters
-  -> send a message or call a webhook
-  -> remember the result
+w_search
+  -> w_describe
+  -> ask the user for confirmation when required
+  -> w_call or w_present
+  -> w_result_read only when the result is large
 ```
+
+Installing, updating, disabling, or removing a plugin does not change this command list. Reconnecting the MCP client is not required.

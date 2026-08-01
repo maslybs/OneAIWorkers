@@ -31,6 +31,7 @@ interface OAuthCodeRow {
 
 interface OAuthTokenRow {
   token: string;
+  client_id: string;
   resource: string | null;
   scope: string | null;
   expires_at: number;
@@ -308,19 +309,27 @@ export async function isValidOAuthAccessToken(
   env: Env,
   expectedResource?: string,
 ): Promise<boolean> {
-  if (!token || !env.OAUTH_DB) return false;
+  return Boolean(await oauthAccessTokenIdentity(token, env, expectedResource));
+}
+
+export async function oauthAccessTokenIdentity(
+  token: string,
+  env: Env,
+  expectedResource?: string,
+): Promise<string | null> {
+  if (!token || !env.OAUTH_DB) return null;
   await ensureOAuthSchema(env);
   const storedToken = await tokenStorageKey(token);
   const row = await env.OAUTH_DB.prepare(
-    "SELECT token, resource, scope, expires_at FROM oauth_tokens WHERE token = ? LIMIT 1",
+    "SELECT token, client_id, resource, scope, expires_at FROM oauth_tokens WHERE token = ? LIMIT 1",
   ).bind(storedToken).first<OAuthTokenRow>();
-  if (!row) return false;
+  if (!row) return null;
   if (row.expires_at <= nowSeconds()) {
     await env.OAUTH_DB.prepare("DELETE FROM oauth_tokens WHERE token = ?").bind(row.token).run();
-    return false;
+    return null;
   }
-  if (expectedResource && row.resource !== expectedResource) return false;
-  return scopeIncludes(row.scope || "", OAUTH_SCOPE);
+  if (expectedResource && row.resource !== expectedResource) return null;
+  return scopeIncludes(row.scope || "", OAUTH_SCOPE) ? row.client_id : null;
 }
 
 export function oauthUnauthorizedHeaders(request: Request, env: Env): Record<string, string> {

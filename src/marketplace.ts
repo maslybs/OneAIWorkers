@@ -3,7 +3,7 @@ import { biInline } from "./i18n";
 import { assertSafeOutboundUrl, safeKey } from "./security";
 import type { Env } from "./types";
 
-const DEFAULT_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker&type=connector";
+const DEFAULT_CATALOG_URL = "https://marketplace.bgdn.dev/api/catalog?target=cloudflare-worker";
 
 export interface MarketplaceTarget {
   id: string;
@@ -76,15 +76,15 @@ export function connectorInstallationHelp(
   return {
     ok: true,
     exact_reply: ukrainian
-      ? "Назвіть сервіс або опишіть дію, для якої потрібен конектор. Я перевірю справжній каталог і, якщо знайду сумісний варіант, одразу дам точне посилання для встановлення у браузері."
-      : "Name the service or describe what the connector should do. I will check the real catalog and, if a compatible option exists, give you its exact browser installation link.",
+      ? "Назвіть сервіс або опишіть потрібну дію. Я перевірю справжній каталог і, якщо знайду плагін, одразу дам точне посилання для встановлення у браузері."
+      : "Name the service or describe the needed action. I will check the real catalog and, if a plugin exists, give you its exact browser installation link.",
     installation_flow: [
       ukrainian
         ? "Після назви сервісу або задачі викликати find_capability."
         : "After the service or task is known, call find_capability.",
       ukrainian
-        ? "Називати конектор доступним лише тоді, коли find_capability повернув збіг."
-        : "Claim that a connector is available only when find_capability returns a match.",
+        ? "Називати плагін доступним лише тоді, коли find_capability повернув збіг."
+        : "Claim that a plugin is available only when find_capability returns a match.",
       ukrainian
         ? "Поставити повернений install_url на початку відповіді й попросити відкрити його у звичайному браузері."
         : "Put the returned install_url at the beginning of the reply and ask the user to open it in a normal browser.",
@@ -92,8 +92,8 @@ export function connectorInstallationHelp(
         ? "Після встановлення браузер автоматично відкриє захищену сторінку власного OneAIWorkers для введення адреси сервісу та ключа."
         : "After installation, the browser automatically opens a protected page on the user's own OneAIWorkers for the service address and key.",
       ukrainian
-        ? "Повернутися до чату; list_connectors і call_connector_tool бачать конектор без обов’язкового перепідключення."
-        : "Return to the chat; list_connectors and call_connector_tool can use the connector without a required reconnect.",
+        ? "Повернутися до чату; новий плагін одразу з’явиться в пошуку без обов’язкового перепідключення."
+        : "Return to the chat; the new plugin appears in search without a required reconnect.",
     ],
     safety: {
       worker_home_has_marketplace_page: false,
@@ -103,8 +103,8 @@ export function connectorInstallationHelp(
       manual_manifest_is_developer_mode_only: true,
     },
     response_instruction: ukrainian
-      ? "Не вигадуйте розділ Marketplace на головній сторінці Worker, назви конекторів або кроки OAuth. Якщо користувач ще не назвав сервіс чи задачу, дайте лише exact_reply."
-      : "Do not invent a Marketplace section on the Worker home page, connector names, or OAuth steps. If the user has not named a service or task yet, return only exact_reply.",
+      ? "Не вигадуйте назви плагінів або кроки OAuth. Якщо користувач ще не назвав сервіс чи задачу, дайте лише exact_reply."
+      : "Do not invent plugin names or OAuth steps. If the user has not named a service or task yet, return only exact_reply.",
   };
 }
 
@@ -148,14 +148,14 @@ export async function findCapability(
     .map(({ item, target }) => {
       const localized = item.locales?.[args.language || "en"] || {};
       return {
-        connector_id: item.id,
+        plugin_id: item.id,
         name: localized.name || item.name,
         description: localized.description || item.description,
         version: target.version,
         capabilities: item.capabilities || [],
         use_cases: item.use_cases || [],
         permissions: target.permissions || [],
-        install_url: `${baseUrl}/connectors/install/${encodeURIComponent(item.id)}?lang=${args.language || "en"}`,
+        install_url: `${baseUrl}/plugins/install/${encodeURIComponent(item.id)}?lang=${args.language || "en"}`,
       };
     });
 
@@ -167,13 +167,13 @@ export async function findCapability(
     matches: ranked,
     browser_action: firstMatch
       ? {
-          type: "install_connector",
+          type: "install_plugin",
           url: firstMatch.install_url,
           open_in_normal_browser: true,
           do_not_fetch_with_a_tool: true,
           response_instruction: biInline(
-            `Put this exact link at the very beginning of the reply and do not claim that any unreturned connector exists: ${firstMatch.install_url}`,
-            `Поставте це точне посилання на самому початку відповіді й не стверджуйте, що існує будь-який конектор, якого немає в результаті: ${firstMatch.install_url}`,
+            `Put this exact link at the very beginning of the reply and do not claim that any unreturned plugin exists: ${firstMatch.install_url}`,
+            `Поставте це точне посилання на самому початку відповіді й не стверджуйте, що існує будь-який плагін, якого немає в результаті: ${firstMatch.install_url}`,
           ),
         }
       : null,
@@ -185,12 +185,12 @@ export async function findCapability(
       : null,
     next_step: ranked.length
       ? biInline(
-          `Tell the user a matching connector is available and put this browser link first: ${ranked[0].install_url}`,
-          `Скажіть користувачу, що потрібний конектор доступний, і поставте це посилання для браузера на початку відповіді: ${ranked[0].install_url}`,
+          `Tell the user a matching plugin is available and put this browser link first: ${ranked[0].install_url}`,
+          `Скажіть користувачу, що потрібний плагін доступний, і поставте це посилання для браузера на початку відповіді: ${ranked[0].install_url}`,
         )
       : biInline(
-          "No compatible cloud connector was found in the marketplace. Do not invent alternatives. Offer developer mode only if the user asks for a custom integration.",
-          "У каталозі не знайдено сумісного хмарного конектора. Не вигадуйте альтернатив. Запропонуйте режим розробника лише якщо користувач просить власну інтеграцію.",
+          "No compatible cloud plugin was found in the marketplace. Do not invent alternatives. Offer developer mode only if the user asks for a custom integration.",
+          "У каталозі не знайдено сумісного хмарного плагіна. Не вигадуйте альтернатив. Запропонуйте режим розробника лише якщо користувач просить власну інтеграцію.",
         ),
   };
 }
@@ -207,11 +207,11 @@ export async function listConnectorUpdates(env: Env, baseUrl: string) {
     const target = item ? cloudTarget(item) : null;
     if (!item || !target || compareVersions(target.version, row.installed_version) <= 0) continue;
     updates.push({
-      connector_id: row.connector_id,
+      plugin_id: row.connector_id,
       name: item.name,
       installed_version: row.installed_version,
       latest_version: target.version,
-      update_url: `${baseUrl}/connectors/${encodeURIComponent(row.connector_id)}/update`,
+      update_url: `${baseUrl}/plugins/${encodeURIComponent(row.connector_id)}/update`,
     });
   }
   return {
@@ -219,10 +219,10 @@ export async function listConnectorUpdates(env: Env, baseUrl: string) {
     updates,
     message: updates.length
       ? biInline(
-          `A connector update is available. Open this link in a browser: ${updates[0].update_url}`,
-          `Доступне оновлення конектора. Відкрийте це посилання у браузері: ${updates[0].update_url}`,
+          `A plugin update is available. Open this link in a browser: ${updates[0].update_url}`,
+          `Доступне оновлення плагіна. Відкрийте це посилання у браузері: ${updates[0].update_url}`,
         )
-      : biInline("All installed connectors are current.", "Усі встановлені конектори мають останню версію."),
+      : biInline("All installed plugins are current.", "Усі встановлені плагіни мають останню версію."),
   };
 }
 
@@ -321,7 +321,7 @@ export function cloudTarget(item: MarketplaceItem): MarketplaceTarget | null {
   const target = targets.find((candidate) =>
     candidate?.id === "cloudflare-worker" &&
     candidate?.runtime === "cloudflare-worker" &&
-    candidate?.package_format === "oneaiworkers.connector.v1"
+    ["oneai.plugin.v1", "oneaiworkers.connector.v1"].includes(candidate?.package_format)
   );
   if (!target || !isMarketplaceTarget(target)) return null;
   return target;

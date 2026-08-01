@@ -50,3 +50,44 @@ test("reports that agent teams use one Durable Object and no Worker API key", ()
   assert.equal(capabilities.execution.background_progress, true);
   assert.equal(capabilities.execution.connector_tool_execution, false);
 });
+
+test("refuses an agent run that cannot fit within max_steps", async () => {
+  const team = {
+    id: "team-1",
+    name: "Review team",
+    description: "",
+    coordinator_agent_id: "coordinator",
+    member_agent_ids: ["coordinator", "reviewer"],
+    enabled: true,
+    max_rounds: 2,
+    expected_input_tokens_per_call: 100,
+    expected_output_tokens_per_call: 100,
+    max_budget_usd: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  const agent = (id) => ({
+    id,
+    name: id,
+    role: id,
+    instructions: "Review the task.",
+    profile: "fast",
+    enabled: true,
+    max_output_tokens: 100,
+    temperature: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+  const repository = {
+    requireTeam: () => team,
+    requireAgent: (id) => agent(id),
+    insertRun: () => assert.fail("A rejected run must not be stored."),
+  };
+  const state = { storage: { setAlarm: () => assert.fail("A rejected run must not schedule an alarm.") } };
+  const orchestrator = new agents.AgentOrchestrator(state, { AI: {} }, repository);
+
+  await assert.rejects(
+    () => orchestrator.startRun("team-1", "Review this change", undefined, 4),
+    /needs 5 steps, which exceeds the requested limit of 4/u,
+  );
+});

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "0.9.8",
+  "latest_version": "1.0.0",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 0.9.8 discovers only strictly compatible Cloudflare connector packages from the universal marketplace.",
-    "uk": "OneAIWorkers 0.9.8 знаходить в універсальному маркетплейсі лише суворо сумісні хмарні пакунки конекторів."
+    "en": "OneAIWorkers 1.0.0 introduces the stable W Gateway, a versioned plugin registry, meaning search, stored schemas, unified permissions, and protected large results.",
+    "uk": "OneAIWorkers 1.0.0 додає сталий W Gateway, версійний реєстр плагінів, пошук за змістом, збережені схеми, єдині права та захищені великі результати."
   }
 }

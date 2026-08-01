@@ -13,18 +13,18 @@ export function connectorInstallPageHtml(
 ): string {
   const copy = language === "uk"
     ? {
-        eyebrow: "Конектор з каталогу",
+        eyebrow: "Плагін з каталогу",
         title: `Підключити ${localized(item, language).name}`,
         description: localized(item, language).description,
-        body: "Конектор буде встановлено у ваш Cloudflare та автоматично зʼявиться у цьому OneAIWorkers.",
+        body: "Плагін буде встановлено у ваш Cloudflare та автоматично зʼявиться у цьому OneAIWorkers.",
         action: "Увійти в Cloudflare і встановити",
         safety: "Ваші ключі до сервісу вводяться пізніше на сторінці цього Worker. Каталог їх не отримує.",
       }
     : {
-        eyebrow: "Marketplace connector",
+        eyebrow: "Marketplace plugin",
         title: `Connect ${localized(item, language).name}`,
         description: localized(item, language).description,
-        body: "The connector will be installed in your Cloudflare account and registered with this OneAIWorkers automatically.",
+        body: "The plugin will be installed in your Cloudflare account and registered with this OneAIWorkers automatically.",
         action: "Sign in to Cloudflare and install",
         safety: "You will enter service credentials later on this Worker. The marketplace never receives them.",
       };
@@ -51,13 +51,13 @@ export function connectorUpdatePageHtml(
   const current = installed.installed_version;
   const copy = language === "uk"
     ? {
-        eyebrow: "Оновлення конектора",
+        eyebrow: "Оновлення плагіна",
         title: `Оновити ${localized(item, language).name}`,
         body: `Встановлено ${current}. Доступно ${target.version}. Налаштування та ключі буде збережено.`,
         action: "Увійти в Cloudflare і оновити",
       }
     : {
-        eyebrow: "Connector update",
+        eyebrow: "Plugin update",
         title: `Update ${localized(item, language).name}`,
         body: `Installed ${current}. Version ${target.version} is available. Your settings and credentials will be preserved.`,
         action: "Sign in to Cloudflare and update",
@@ -75,14 +75,14 @@ export function connectorAccessPageHtml(language: Language): string {
   const copy = language === "uk"
     ? {
         eyebrow: "Захищене посилання",
-        title: "Відкрити налаштування конектора",
+        title: "Відкрити налаштування плагіна",
         body: "Натисніть кнопку, щоб використати одноразове посилання та перейти до введення ключа сервісу.",
         action: "Продовжити до налаштувань",
         safety: "До натискання кнопки посилання не використовується. Це захищає його від автоматичних перевірок у чатах і браузерах.",
       }
     : {
         eyebrow: "Protected link",
-        title: "Open connector settings",
+        title: "Open plugin settings",
         body: "Continue to use this one-time link and enter the service credentials securely.",
         action: "Continue to settings",
         safety: "The link is not used until you press the button. This protects it from automatic link checks in chats and browsers.",
@@ -111,21 +111,21 @@ export function connectorSetupPageHtml(
         eyebrow: saved ? "Збережено" : "Безпечне налаштування",
         title: saved ? `${connectorName} готовий` : `Налаштувати ${connectorName}`,
         body: saved
-          ? "Поверніться до ChatGPT, Claude або іншого MCP-клієнта. Конектор уже доступний через OneAIWorkers."
+          ? "Поверніться до ChatGPT, Claude або іншого MCP-клієнта. Плагін уже доступний через OneAIWorkers."
           : "Ці дані надсилаються лише вашому Worker і зберігаються у D1 у зашифрованому вигляді.",
         save: "Зберегти й перевірити",
         secretSaved: "Значення вже збережене. Залиште поле порожнім, щоб не змінювати його.",
-        next: "У чаті попросіть показати встановлені конектори або одразу виконайте потрібну дію.",
+        next: "У чаті попросіть знайти встановлений плагін або одразу виконайте потрібну дію.",
       }
     : {
         eyebrow: saved ? "Saved" : "Secure setup",
         title: saved ? `${connectorName} is ready` : `Set up ${connectorName}`,
         body: saved
-          ? "Return to ChatGPT, Claude, or another MCP client. The connector is now available through OneAIWorkers."
+          ? "Return to ChatGPT, Claude, or another MCP client. The plugin is now available through OneAIWorkers."
           : "These values are sent only to your Worker and stored encrypted in D1.",
         save: "Save and continue",
         secretSaved: "A value is already saved. Leave this empty to keep it.",
-        next: "In your chat, ask to list installed connectors or continue with the task you wanted to complete.",
+        next: "In your chat, ask to find the installed plugin or continue with the task you wanted to complete.",
       };
   if (saved) {
     return pageShell(language, copy.title, `
@@ -155,9 +155,60 @@ export function connectorSetupPageHtml(
     ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
     <form method="post">
       <input type="hidden" name="lang" value="${language}" />
-      ${controls || `<p class="safe">${language === "uk" ? "Цей конектор не потребує додаткових ключів." : "This connector needs no additional credentials."}</p>`}
+      ${controls || `<p class="safe">${language === "uk" ? "Цей плагін не потребує додаткових ключів." : "This plugin needs no additional credentials."}</p>`}
       <button class="button" type="submit">${escapeHtml(copy.save)}</button>
     </form>
+  `);
+}
+
+export function confirmationApprovalPageHtml(
+  language: Language,
+  state: "pending" | "approved" | "expired",
+  toolRef?: string,
+): string {
+  const copy = language === "uk"
+    ? {
+        pendingEyebrow: "Потрібне ваше підтвердження",
+        pendingTitle: "Підтвердити ризикову дію",
+        pendingBody: "OneAIWorkers виконає цю дію лише після вашого натискання. Перевірте дію в чаті перед підтвердженням.",
+        action: "Підтверджую виконання",
+        approvedEyebrow: "Підтверджено",
+        approvedTitle: "Можна повернутися до чату",
+        approvedBody: "Дію схвалено один раз. OneAIWorkers прийме лише незмінні параметри й не дозволить повторно використати це підтвердження.",
+        expiredEyebrow: "Посилання недійсне",
+        expiredTitle: "Потрібне нове підтвердження",
+        expiredBody: "Це посилання вже використано або строк його дії минув. Попросіть клієнт повторити дію.",
+        operation: "Дія",
+      }
+    : {
+        pendingEyebrow: "Your approval is required",
+        pendingTitle: "Approve a risky action",
+        pendingBody: "OneAIWorkers will run this action only after your click. Check the action in the chat before approving it.",
+        action: "Approve this action",
+        approvedEyebrow: "Approved",
+        approvedTitle: "Return to your chat",
+        approvedBody: "The action was approved once. OneAIWorkers will accept only unchanged arguments and will not reuse this approval.",
+        expiredEyebrow: "Link unavailable",
+        expiredTitle: "A new approval is required",
+        expiredBody: "This link has expired or was already used. Ask the client to start the action again.",
+        operation: "Action",
+      };
+  if (state === "approved") return pageShell(language, copy.approvedTitle, `
+    <p class="eyebrow">${escapeHtml(copy.approvedEyebrow)}</p>
+    <h1>${escapeHtml(copy.approvedTitle)}</h1>
+    <p class="lead">${escapeHtml(copy.approvedBody)}</p>
+  `);
+  if (state === "expired") return pageShell(language, copy.expiredTitle, `
+    <p class="eyebrow">${escapeHtml(copy.expiredEyebrow)}</p>
+    <h1>${escapeHtml(copy.expiredTitle)}</h1>
+    <p class="lead">${escapeHtml(copy.expiredBody)}</p>
+  `);
+  return pageShell(language, copy.pendingTitle, `
+    <p class="eyebrow">${escapeHtml(copy.pendingEyebrow)}</p>
+    <h1>${escapeHtml(copy.pendingTitle)}</h1>
+    <p class="lead">${escapeHtml(copy.pendingBody)}</p>
+    <p class="safe"><strong>${escapeHtml(copy.operation)}:</strong><br>${escapeHtml(toolRef || "")}</p>
+    <form method="post"><button class="button" type="submit">${escapeHtml(copy.action)}</button></form>
   `);
 }
 
@@ -179,8 +230,8 @@ export function pageLanguage(url: URL, request?: Request): Language {
 }
 
 function buildInstallerUrl(env: Env, operation: "install" | "update", baseUrl: string, packageId: string, language: Language): string {
-  const installerBase = String(env.CONNECTOR_INSTALLER_URL || env.UPDATE_SERVICE_URL || "https://workers.bgdn.dev").replace(/\/+$/g, "");
-  const url = new URL(`${installerBase}/connector/start`);
+  const installerBase = String(env.PLUGIN_INSTALLER_URL || env.UPDATE_SERVICE_URL || "https://workers.bgdn.dev").replace(/\/+$/g, "");
+  const url = new URL(`${installerBase}/plugin/start`);
   url.searchParams.set("operation", operation);
   url.searchParams.set("target", baseUrl);
   url.searchParams.set("package", packageId);

@@ -26,6 +26,12 @@ export async function isMcpAuthorized(request: Request, env: Env): Promise<boole
   return false;
 }
 
+export async function isMcpAdminAuthorized(request: Request, env: Env): Promise<boolean> {
+  const token = getRequestToken(request);
+  const expected = String(env.W_ADMIN_SECRET || env.MCP_SHARED_SECRET || "");
+  return Boolean(token && expected && await constantTimeEqual(token, expected));
+}
+
 export function unauthorized(request: Request, env: Env): Response {
   const body = env.MCP_SHARED_SECRET || isOAuthEnabled(env)
     ? biInline(

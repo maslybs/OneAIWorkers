@@ -26,19 +26,19 @@ export function homeHtml(env: Env, baseUrl: string): string {
 </head>
 <body>
   <h1>${escapeHtml(title)}</h1>
-  <p class="muted">Secure remote MCP gateway for connecting ChatGPT, Claude, and other MCP-compatible clients to user-owned HTTP APIs.</p>
+  <p class="muted">A private MCP gateway with installable plugins for ChatGPT, Claude, and other MCP-compatible clients.</p>
   <p class="muted">Version ${escapeHtml(APP_VERSION)}</p>
 
   <div class="grid">
     <section class="card">
       <h2>English</h2>
-      <p><strong>OneAIWorkers</strong> is a Cloudflare Worker MCP server for API automation.</p>
-      <p>Connect it to ChatGPT, Claude, or another remote MCP client. The AI plans and decides while the Worker validates requests, reads Cloudflare Secrets by name, and calls external APIs.</p>
+      <p><strong>OneAIWorkers</strong> gives your AI client one private place to use installed plugins.</p>
+      <p>It finds the needed action, checks access, asks for confirmation when needed, and keeps service keys out of chat.</p>
     </section>
     <section class="card">
       <h2>Українською</h2>
-      <p><strong>OneAIWorkers</strong> — це Cloudflare Worker MCP-сервер для автоматизації API.</p>
-      <p>Підключіть його до ChatGPT, Claude або іншого віддаленого MCP-клієнта. ШІ планує й приймає рішення, а Worker перевіряє запити, читає Cloudflare Secrets за назвою та викликає зовнішні API.</p>
+      <p><strong>OneAIWorkers</strong> дає вашому ШІ-клієнту одне приватне місце для роботи зі встановленими плагінами.</p>
+      <p>Він знаходить потрібну дію, перевіряє доступ, просить підтвердження за потреби та не передає ключі сервісів у чат.</p>
     </section>
   </div>
 
@@ -51,24 +51,20 @@ export function homeHtml(env: Env, baseUrl: string): string {
   </section>
 
   <section class="card">
-    <h2>Connector engine</h2>
+    <h2>Plugin registry</h2>
     <ul>
-      <li>Saved connectors and actions are stored in D1.</li>
-      <li>Supports GET, POST, PUT, PATCH, DELETE.</li>
-      <li>Supports path/query/body templates such as <code>/workflows/{{id}}</code>.</li>
-      <li>Supports API key, Bearer, Basic, OAuth refresh-token, OAuth client-credentials, and Google refresh-token style auth.</li>
-      <li>Marketplace connectors can be installed in a browser as protected child Workers.</li>
-      <li>Marketplace credentials are encrypted before D1 storage. Manual connectors can still reference Cloudflare Secrets by name.</li>
+      <li>Installed plugins, versions, permissions, schemas, and search data are stored in D1.</li>
+      <li>The client always sees the same six gateway commands.</li>
+      <li>Installing or updating a plugin does not require a new MCP tool list.</li>
+      <li>Service keys are encrypted before D1 storage.</li>
+      <li>Large results are saved temporarily and read only in needed parts.</li>
     </ul>
   </section>
 
   <section class="card">
-    <h2>First MCP commands</h2>
-    <pre>find_capability { "query": "inspect n8n workflow failures" }
-connector_setup_status
-list_connectors { "include_actions": true }
-test_connector { "connector_id": "n8n", "action_name": "list_workflows" }</pre>
-    <p class="muted">Run setup status first. It shows D1 readiness, saved connectors, required secrets, and missing secrets without exposing values.</p>
+    <h2>First MCP command</h2>
+    <pre>w_search { "query": "inspect n8n workflow failures" }</pre>
+    <p class="muted">Use an empty query for a short overview. The client loads full schemas only after it chooses an exact versioned action.</p>
   </section>
 
   <section class="card">

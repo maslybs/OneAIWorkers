@@ -122,8 +122,8 @@ export class AgentManager {
       });
     }
     if (segments.length === 1 && request.method === "POST") {
-      const body = await requestJson<{ team_id: string; task: string; max_budget_usd?: number }>(request);
-      const run = await this.orchestrator.startRun(body.team_id, body.task, body.max_budget_usd);
+      const body = await requestJson<{ team_id: string; task: string; max_budget_usd?: number; max_steps?: number }>(request);
+      const run = await this.orchestrator.startRun(body.team_id, body.task, body.max_budget_usd, body.max_steps);
       return responseJson({ ok: true, data: { run } }, 202);
     }
 

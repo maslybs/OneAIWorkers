@@ -131,6 +131,7 @@ export function redactSensitiveValue(value: unknown, depth = 0, protectedValues:
 }
 
 function isSafeSecretReference(key: string, value: unknown): boolean {
+  if (key === "confirmation_token" && typeof value === "string" && /^[A-Za-z0-9_-]{20,300}$/u.test(value)) return true;
   if (typeof value !== "string" || !/^[A-Z][A-Z0-9_]{1,80}$/.test(value)) return false;
   return /(?:^|_)(?:secret_name|token_secret)$/.test(key);
 }

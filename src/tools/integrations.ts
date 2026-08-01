@@ -68,6 +68,8 @@ export const callConnectorToolSchema = {
   input: z.record(z.string(), z.unknown()).default({}),
   dry_run: z.boolean().default(false).describe(biInline("If true, show the prepared request without calling the API.", "Якщо true, показати підготовлений запит без виклику API.")),
   confirmed: z.boolean().default(false).describe(biInline("Required for actions that can create external side effects.", "Потрібно для actions, які можуть створити зовнішні side effects.")),
+  confirmation_token: z.string().min(20).max(300).optional(),
+  idempotency_key: z.string().min(1).max(200).optional(),
 };
 
 export const testConnectorSchema = {
@@ -78,7 +80,7 @@ export const testConnectorSchema = {
   confirmed: z.boolean().default(false).describe(biInline("Required when dry_run=false for an action that can create an external side effect.", "Потрібно, коли dry_run=false для action, яка може створити зовнішній side effect.")),
 };
 
-interface SystemActionDefinition {
+export interface SystemActionDefinition {
   name: string;
   description: string;
   schema: z.ZodObject<any>;
@@ -101,7 +103,7 @@ function systemAction(
   };
 }
 
-const SYSTEM_ACTIONS: SystemActionDefinition[] = [
+export const SYSTEM_ACTIONS: SystemActionDefinition[] = [
   systemAction("runtime_info", "Returns the live Worker version and stable gateway contract.", {}),
   systemAction("list_connectors", "Reads the current connector registry directly from D1.", listConnectorsSchema),
   systemAction("connector_setup_status", "Reads the current connector engine and credential readiness.", connectorSetupStatusSchema),
@@ -231,7 +233,7 @@ export async function connectorSetupStatus(env: Env, args: z.infer<z.ZodObject<t
     workers_ai: Boolean(env.AI),
     agent_manager: Boolean(env.AGENT_MANAGER),
     encrypted_credentials: Boolean(env.CREDENTIALS_MASTER_KEY),
-    marketplace: Boolean(env.MARKETPLACE_CATALOG_URL || env.CONNECTOR_INSTALLER_URL),
+    marketplace: Boolean(env.MARKETPLACE_CATALOG_URL || env.PLUGIN_INSTALLER_URL),
     worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
     notifications: {
       telegram: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
@@ -944,7 +946,7 @@ function uniqueToolName(baseName: string, usedNames: Set<string>): string {
   return name;
 }
 
-function humanizeActionName(value: string): string {
+export function humanizeActionName(value: string): string {
   return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
@@ -959,13 +961,13 @@ function buildConnectorToolDescription(row: ConnectorActionToolRow, readOnly: bo
   return parts.join(" ");
 }
 
-function isReadOnlyConnectorAction(row: ActionRow): boolean {
+export function isReadOnlyConnectorAction(row: ActionRow): boolean {
   const name = row.action_name.toLowerCase();
   if (["GET", "HEAD", "OPTIONS"].includes(row.method.toUpperCase())) return true;
   return /^(get|list|read|fetch|check|status|info|search|lookup|whois|summary|overview|inspect|validate|test)/.test(name);
 }
 
-function isDestructiveConnectorAction(row: ActionRow): boolean {
+export function isDestructiveConnectorAction(row: ActionRow): boolean {
   const name = row.action_name.toLowerCase();
   if (["DELETE"].includes(row.method.toUpperCase())) return true;
   return /^(delete|remove|destroy|cancel|disable|revoke|drop|purge|wipe)/.test(name);
