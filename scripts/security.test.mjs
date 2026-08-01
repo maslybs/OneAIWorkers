@@ -169,6 +169,23 @@ test("connector response never keeps raw JSON secrets", () => {
   assert.ok(serialized.includes("[redacted]"));
 });
 
+test("connector response preserves complete redacted JSON only when requested by W Gateway", () => {
+  const secret = "opaque-secret-that-must-not-leak";
+  const body = JSON.stringify({
+    data: Array.from({ length: 30 }, (_, index) => ({ index, value: index === 29 ? secret : `item-${index}` })),
+  });
+  const response = new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+
+  const regular = connectorResponse.buildConnectorResponse(response, body, [secret]);
+  assert.equal("json" in regular, false);
+  assert.equal(regular.json_preview.data.length, 13, "regular responses keep a bounded preview");
+
+  const preserved = connectorResponse.buildConnectorResponse(response, body, [secret], { includeJson: true });
+  assert.equal(preserved.json.data.length, 30);
+  assert.equal(preserved.json.data[29].value, "[redacted]");
+  assert.equal(JSON.stringify(preserved).includes(secret), false);
+});
+
 test("URL templates cannot change the API host", () => {
   assert.throws(
     () => connectorTemplates.validateTemplatedUrl("https://{{host}}/v1/items"),

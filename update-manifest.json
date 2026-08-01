@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "1.2.1",
+  "latest_version": "1.2.2",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 1.2.1 fixes plugin installation links for older installations whose update service URL already contains /update/start.",
-    "uk": "OneAIWorkers 1.2.1 виправляє посилання встановлення плагінів у старих встановленнях, де адреса служби оновлень уже містить /update/start."
+    "en": "OneAIWorkers 1.2.2 preserves complete plugin responses, stores large results safely, and lets clients read them in pages.",
+    "uk": "OneAIWorkers 1.2.2 зберігає повні відповіді плагінів, безпечно записує великі результати та дозволяє клієнтам читати їх частинами."
   }
 }

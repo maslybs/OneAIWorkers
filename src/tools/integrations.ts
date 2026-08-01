@@ -884,6 +884,7 @@ export async function callConnectorTool(
   env: Env,
   args: z.infer<z.ZodObject<typeof callConnectorToolSchema>>,
   baseUrl = "",
+  options: { preserveFullResponse?: boolean } = {},
 ) {
   const connectorId = normalizeKey(args.connector_id);
   const actionName = normalizeKey(args.action_name);
@@ -921,12 +922,12 @@ export async function callConnectorTool(
   }
 
   if (connector.mode === "child_worker") {
-    const childResult = await callChildWorkerConnector(env, connector, action.action_name, args.input || {}, dryRun);
+    const childResult = await callChildWorkerConnector(env, connector, action.action_name, args.input || {}, dryRun, options.preserveFullResponse);
     if (!dryRun) await recordPluginConnectionResult(env, connectorId, childResult);
     return withLiveGatewayMetadata(childResult, env);
   }
 
-  const result = await callInternalAction(env, action, args.input || {}, dryRun);
+  const result = await callInternalAction(env, action, args.input || {}, dryRun, options.preserveFullResponse);
   if (!dryRun) await recordPluginConnectionResult(env, connectorId, result);
   await audit(db, connectorId, actionName, args.dry_run ? "dry_run_action" : "call_action", true, `${action.method} ${action.url}`);
   return withLiveGatewayMetadata(result, env);
@@ -973,7 +974,7 @@ function prepareConnectorAction(db: D1Database, connectorId: string, action: z.i
   );
 }
 
-async function callInternalAction(env: Env, action: ActionRow, input: JsonObject, dryRun: boolean) {
+async function callInternalAction(env: Env, action: ActionRow, input: JsonObject, dryRun: boolean, preserveFullResponse = false) {
   assertUrlTemplateInput(action.url, input);
   const url = assertSafeOutboundUrl(renderUrlString(action.url, input));
   const method = action.method.toUpperCase();
@@ -1013,7 +1014,11 @@ async function callInternalAction(env: Env, action: ActionRow, input: JsonObject
 
   const response = await fetch(url.toString(), { method, headers, body, redirect: "manual" });
   const text = await response.text();
-  return { ok: response.ok, request: prepared, response: buildConnectorResponse(response, text, protectedRequestValues(headers, url)) };
+  return {
+    ok: response.ok,
+    request: prepared,
+    response: buildConnectorResponse(response, text, protectedRequestValues(headers, url), { includeJson: preserveFullResponse }),
+  };
 }
 
 function buildRequestBody(action: ActionRow, input: JsonObject, method: string, headers: Headers): string | undefined {
@@ -1024,7 +1029,14 @@ function buildRequestBody(action: ActionRow, input: JsonObject, method: string, 
   return typeof rendered === "string" ? rendered : JSON.stringify(rendered);
 }
 
-async function callChildWorkerConnector(env: Env, connector: ConnectorRow, actionName: string, input: JsonObject, dryRun: boolean) {
+async function callChildWorkerConnector(
+  env: Env,
+  connector: ConnectorRow,
+  actionName: string,
+  input: JsonObject,
+  dryRun: boolean,
+  preserveFullResponse = false,
+) {
   const headers = new Headers({ "content-type": "application/json; charset=utf-8" });
   if (connector.child_worker_token_secret) headers.set("x-oneaiworkers-child-token", getSecret(env, connector.child_worker_token_secret));
   if (connector.child_worker_token_credential) {
@@ -1046,7 +1058,12 @@ async function callChildWorkerConnector(env: Env, connector: ConnectorRow, actio
     if (dryRun) return { ok: true, dry_run: true, invocation: "service_binding", child_worker_binding: connector.child_worker_binding, target, payload: redactSensitiveValue(payload) };
     const response = await binding.fetch(new Request("https://oneaiworkers-child.local/tools/call", { method: "POST", headers, body }));
     const text = await response.text();
-    return { ok: response.ok, invocation: "service_binding", child_worker_binding: connector.child_worker_binding, response: buildConnectorResponse(response, text, protectedRequestValues(headers)) };
+    return {
+      ok: response.ok,
+      invocation: "service_binding",
+      child_worker_binding: connector.child_worker_binding,
+      response: buildConnectorResponse(response, text, protectedRequestValues(headers), { includeJson: preserveFullResponse }),
+    };
   }
 
   if (!connector.child_worker_url) throw new Error(biInline("Child Worker URL or Service Binding is not configured.", "URL або Service Binding child Worker не налаштований."));
@@ -1055,7 +1072,12 @@ async function callChildWorkerConnector(env: Env, connector: ConnectorRow, actio
 
   const response = await fetch(endpoint.toString(), { method: "POST", headers, body, redirect: "manual" });
   const text = await response.text();
-  return { ok: response.ok, invocation: "protected_url", child_worker_url: redactUrlForOutput(endpoint), response: buildConnectorResponse(response, text, protectedRequestValues(headers, endpoint)) };
+  return {
+    ok: response.ok,
+    invocation: "protected_url",
+    child_worker_url: redactUrlForOutput(endpoint),
+    response: buildConnectorResponse(response, text, protectedRequestValues(headers, endpoint), { includeJson: preserveFullResponse }),
+  };
 }
 
 function protectedRequestValues(headers: Headers, url?: URL): string[] {

@@ -112,10 +112,10 @@ export async function wCall(env: Env, context: WRequestContext, input: WCallInpu
       input: runtimeInput,
       dry_run: false,
       confirmed: confirmationUsed || !tool.requires_confirmation,
-    }, context.baseUrl);
+    }, context.baseUrl, { preserveFullResponse: true });
     const httpStatus = extractHttpStatus(rawResult);
     const safeResult = redactSensitiveValue(toPublicPluginValue(rawResult));
-    const normalized = await normalizeExecutionResult(env, context, safeResult);
+    const normalized = await normalizeExecutionResult(env, context, pluginResponseValue(safeResult));
     if (pluginInvocationFailed(rawResult, httpStatus)) {
       const response = {
         ok: false,
@@ -301,6 +301,15 @@ function pluginInvocationFailed(value: unknown, httpStatus: number | null): bool
   };
   visit(value, 0);
   return failed;
+}
+
+function pluginResponseValue(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const response = (value as Record<string, unknown>).response;
+  if (!response || typeof response !== "object" || Array.isArray(response)) return value;
+  return Object.prototype.hasOwnProperty.call(response, "json")
+    ? (response as Record<string, unknown>).json
+    : value;
 }
 
 function canonicalJson(value: unknown): string {

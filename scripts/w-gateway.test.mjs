@@ -79,13 +79,13 @@ test("every W Gateway response reports an available OneAIWorkers update", async 
   const originalFetch = globalThis.fetch;
   let manifestRequests = 0;
   env.UPDATE_CHECK_ENABLED = "true";
-  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.2.2.json";
+  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.2.3.json";
   globalThis.fetch = async (url) => {
     if (String(url).includes("updates.example.com")) {
       manifestRequests += 1;
       return Response.json({
         schema_version: 1,
-        latest_version: "1.2.2",
+        latest_version: "1.2.3",
         critical: false,
         message: { en: "New update.", uk: "Доступне нове оновлення." },
       });
@@ -132,6 +132,37 @@ test("registry normalizes installed actions into immutable plugin tool reference
     "SELECT kind FROM w_capabilities WHERE plugin_version_id = 'sample@1.0.0'",
   ).first();
   assert.equal(pluginKind.kind, "plugin");
+});
+
+test("W Gateway stores the complete large plugin response and can page through it", async () => {
+  const tool = await d1.prepare(
+    "SELECT tool_ref FROM w_tools WHERE tool_ref LIKE 'sample:%' AND method_name = 'items-list' AND enabled = 1",
+  ).first();
+  assert.ok(tool?.tool_ref);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    data: Array.from({ length: 300 }, (_, index) => ({
+      id: `item-${index}`,
+      name: `Large item ${index} ${"x".repeat(120)}`,
+    })),
+  });
+  try {
+    const called = await gateway.wCall(env, context, { tool_ref: tool.tool_ref, arguments: { limit: 50 } });
+    assert.equal(called.ok, true, JSON.stringify(called));
+    assert.ok(called.result.result_id, "large response must be stored instead of cut to a preview");
+    const page = await gateway.readStoredResult(env, context, {
+      result_id: called.result.result_id,
+      pointer: "/data",
+      offset: 120,
+      limit: 3,
+    });
+    assert.equal(page.ok, true);
+    assert.equal(page.total, 300);
+    assert.equal(page.data.length, 3);
+    assert.equal(page.data[0].id, "item-120");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("an empty search explains the live marketplace on a clean client", async () => {
@@ -300,7 +331,7 @@ test("a validated executable skill becomes searchable and uses its fixed runtime
       arguments: { task: "Plan the migration" },
     });
     assert.equal(called.ok, true, JSON.stringify(called));
-    const received = JSON.parse(called.result.response.json_preview.received.input);
+    const received = JSON.parse(called.result.received.input);
     assert.equal(received.mode, "request_plan");
     assert.equal(received.task, "Plan the migration");
     const audit = await d1.prepare(

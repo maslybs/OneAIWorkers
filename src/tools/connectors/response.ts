@@ -7,7 +7,12 @@ const MAX_JSON_DEPTH = 6;
 const MAX_JSON_ARRAY_ITEMS = 12;
 const MAX_JSON_OBJECT_KEYS = 30;
 
-export function buildConnectorResponse(response: Response, text: string, protectedValues: string[] = []) {
+export function buildConnectorResponse(
+  response: Response,
+  text: string,
+  protectedValues: string[] = [],
+  options: { includeJson?: boolean } = {},
+) {
   const contentType = response.headers.get("content-type");
   const parsedJson = parseJsonMaybe(text);
   const safeJson = parsedJson.ok ? redactSensitiveValue(parsedJson.value, 0, protectedValues) : null;
@@ -24,6 +29,7 @@ export function buildConnectorResponse(response: Response, text: string, protect
     text_preview: parsedJson.ok ? null : truncate(safeText, MAX_RESPONSE_PREVIEW_TEXT),
     raw_text_preview: truncate(safeText, MAX_RESPONSE_PREVIEW_TEXT),
     truncated: safeText.length > MAX_RESPONSE_PREVIEW_TEXT,
+    ...(parsedJson.ok && options.includeJson ? { json: safeJson } : {}),
   };
 }
 
