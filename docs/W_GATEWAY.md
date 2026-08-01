@@ -19,14 +19,26 @@ Administrative registry commands are isolated on `/mcp/admin` and require admini
 
 ## Search flow
 
-`w_search` applies endpoint, tenant, user, target, connection, read/write, and enabled-state rules before retrieval. It then merges:
+`w_search` applies endpoint, tenant, user, target, connection, read/write, and enabled-state rules before retrieval.
+
+Small catalogs use no Workers AI. They merge:
 
 1. exact references and names;
 2. D1 FTS5 candidates;
-3. Workers AI query embeddings compared with a limited set of vectors stored in D1;
-4. availability and historical success.
+3. availability and historical success.
+
+Vector search is added only when both conditions are true:
+
+- the user can see at least 20 plugins;
+- exact and FTS5 search did not produce a confident result.
+
+An exact name or immutable reference skips Workers AI even in a large catalog. `W_SEMANTIC_PLUGIN_THRESHOLD` can change the threshold; its default is `20`.
+
+`w_search` returns `search_mode: "text"` for the fast path and `search_mode: "hybrid"` when vectors were actually used.
 
 The response contains compact metadata and never contains full schemas or vectors. `w_describe` reads stored schemas for up to ten selected immutable references.
+
+The registry is not rebuilt before every search. OneAIWorkers marks it stale after a plugin install, update, disable, removal, connection change, or OneAIWorkers version change. Synchronization runs only after one of those changes.
 
 ## Calling an action
 

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "1.0.0",
+  "latest_version": "1.0.1",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 1.0.0 introduces the stable W Gateway, a versioned plugin registry, meaning search, stored schemas, unified permissions, and protected large results.",
-    "uk": "OneAIWorkers 1.0.0 додає сталий W Gateway, версійний реєстр плагінів, пошук за змістом, збережені схеми, єдині права та захищені великі результати."
+    "en": "OneAIWorkers 1.0.1 makes plugin search faster: exact names and D1 FTS5 run first, while vector search is reserved for larger catalogs and uncertain queries.",
+    "uk": "OneAIWorkers 1.0.1 пришвидшує пошук плагінів: спочатку працюють точні назви та D1 FTS5, а векторний пошук вмикається лише для великих каталогів і нечітких запитів."
   }
 }

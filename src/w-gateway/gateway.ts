@@ -7,10 +7,11 @@ import { redactSensitiveText, redactSensitiveValue, safeKey } from "../security"
 import type { Env } from "../types";
 import { APP_VERSION } from "../update";
 import { createWRequestContext } from "./context";
+import { semanticPluginThreshold } from "./config";
 import { processEmbeddingJobs, rebuildVectorClusters } from "./embeddings";
 import { resolveExecutableTool, wCall } from "./execution";
 import { loadPolicy, toolAllowed } from "./policy";
-import { syncWRegistry } from "./registry";
+import { ensureWRegistryCurrent, syncWRegistry } from "./registry";
 import { readStoredResult } from "./results";
 import { bumpCatalogRevision, catalogRevision, ensureWGatewaySchema, wDatabase } from "./schema";
 import { loadPublishedTools, loadPublishedToolsByRefs, wSearch } from "./search";
@@ -157,7 +158,7 @@ async function searchCurrentRegistry(
   context: WRequestContext,
   input: Parameters<typeof wSearch>[2],
 ) {
-  await syncWRegistry(env, { embeddings: true });
+  await ensureWRegistryCurrent(env);
   return wSearch(env, context, input);
 }
 
@@ -533,6 +534,13 @@ async function removeImportedVersionRecords(db: D1Database, versionId: string): 
 
 async function indexImportedVersion(env: Env, versionId: string): Promise<void> {
   const db = wDatabase(env);
+  const published = await db.prepare(
+    `SELECT COUNT(DISTINCT p.id) AS count
+     FROM w_plugins p
+     JOIN w_plugin_versions pv ON pv.id = p.current_version_id AND pv.status = 'published'
+     WHERE p.enabled = 1`,
+  ).first<{ count: number }>();
+  const semanticEnabled = Number(published?.count || 0) >= semanticPluginThreshold(env);
   const rows = await db.prepare(
     `SELECT t.id, t.tool_ref, t.title, t.description, t.search_text, t.search_text_hash,
             c.capability_id, pv.plugin_id,
@@ -554,22 +562,25 @@ async function indexImportedVersion(env: Env, versionId: string): Promise<void> 
   }>();
   const now = new Date().toISOString();
   for (const tool of rows.results || []) {
-    await db.batch([
+    const statements = [
       db.prepare("DELETE FROM w_tool_fts WHERE tool_ref = ?").bind(tool.tool_ref),
       db.prepare(
         `INSERT INTO w_tool_fts (tool_ref, plugin_id, capability_id, title, description, aliases, search_text)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ).bind(tool.tool_ref, tool.plugin_id, tool.capability_id, tool.title, tool.description, tool.aliases, tool.search_text),
-      db.prepare(
+    ];
+    if (semanticEnabled) {
+      statements.push(db.prepare(
         `INSERT INTO w_embedding_jobs (id, tool_id, reason, status, attempts, created_at)
          SELECT ?, ?, 'plugin_publish', 'queued', 0, ?
          WHERE NOT EXISTS (SELECT 1 FROM w_tool_vectors WHERE tool_id = ? AND source_text_hash = ?)
            AND NOT EXISTS (SELECT 1 FROM w_embedding_jobs WHERE tool_id = ? AND status IN ('queued', 'running'))`,
       ).bind(`wej_${(await sha256Base64Url(`${tool.tool_ref}:${tool.search_text_hash}`)).slice(0, 32)}`,
-        tool.id, now, tool.id, tool.search_text_hash, tool.id),
-    ]);
+        tool.id, now, tool.id, tool.search_text_hash, tool.id));
+    }
+    await db.batch(statements);
   }
-  await processEmbeddingJobs(env, 64);
+  if (semanticEnabled) await processEmbeddingJobs(env, 64);
 }
 
 function pluginSearchDocument(

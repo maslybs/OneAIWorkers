@@ -55,7 +55,7 @@ import {
   findCapabilitySchema,
   listConnectorUpdates,
 } from "./marketplace";
-import { createWGatewayServer, registerWGatewayTools, syncWRegistry, wCallLegacyAction } from "./w-gateway";
+import { createWGatewayServer, ensureWRegistryCurrent, registerWGatewayTools, wCallLegacyAction } from "./w-gateway";
 import { createWRequestContext } from "./w-gateway/context";
 import type { ExposureMode } from "./w-gateway/types";
 import { NATIVE_TOOLS } from "./tools/native";
@@ -132,7 +132,7 @@ export async function createMcpServer(
 
 async function createDirectMcpServer(env: Env, request: Request): Promise<McpServer> {
   const baseUrl = buildBaseUrl(request, env);
-  await syncWRegistry(env, { embeddings: true });
+  await ensureWRegistryCurrent(env);
   const gatewayContext = await createWRequestContext(request, env, "direct");
   const server = new McpServer({
     name: env.HUB_NAME || "OneAIWorkers",

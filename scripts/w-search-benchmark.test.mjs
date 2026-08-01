@@ -22,7 +22,11 @@ await build({
 const gateway = await import(pathToFileURL(path.join(outputDirectory, "gateway.js")));
 const sqlite = new DatabaseSync(":memory:");
 const db = d1Adapter(sqlite);
-const env = { OAUTH_DB: db, AI: { run: async (_model, input) => ({ data: (Array.isArray(input.text) ? input.text : [input.text]).map(embedding) }) } };
+const env = {
+  OAUTH_DB: db,
+  W_SEMANTIC_PLUGIN_THRESHOLD: "1",
+  AI: { run: async (_model, input) => ({ data: (Array.isArray(input.text) ? input.text : [input.text]).map(embedding) }) },
+};
 const request = new Request("https://worker.example/mcp", { headers: { "mcp-session-id": "benchmark-session" } });
 const context = {
   tenantId: "default",
@@ -81,6 +85,27 @@ test("hybrid search meets the 200-intent quality and latency targets", async () 
   assert.ok(top1 / benchmarkIntents.length >= 0.75, `top-1 accuracy was ${top1 / benchmarkIntents.length}`);
   assert.ok(wrongDestructiveTop1 / nonDestructiveQueries <= 0.01, `wrong destructive top-1 was ${wrongDestructiveTop1 / nonDestructiveQueries}`);
   assert.ok(p95 < 1_500, `warm p95 was ${p95.toFixed(1)} ms`);
+});
+
+test("an exact operation reference skips vector search even for a large catalog", async () => {
+  let calls = 0;
+  const originalRun = env.AI.run;
+  env.AI.run = async (...args) => {
+    calls += 1;
+    return originalRun(...args);
+  };
+  try {
+    const result = await gateway.wSearch(env, context, {
+      query: benchmarkTools[0].toolRef,
+      limit: 5,
+      filters: { connected_only: true, target: "oneaiworkers-cloudflare" },
+    });
+    assert.equal(result.search_mode, "text");
+    assert.equal(result.results[0]?.tool_ref, benchmarkTools[0].toolRef);
+    assert.equal(calls, 0);
+  } finally {
+    env.AI.run = originalRun;
+  }
 });
 
 test("forbidden and disconnected plugins never leak into search", async () => {

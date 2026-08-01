@@ -77,6 +77,8 @@ test("meta mode always exposes exactly the six stable W tools", async () => {
 test("registry normalizes installed actions into immutable plugin tool references", async () => {
   const result = await gateway.syncWRegistry(env, { force: true, embeddings: true, clusters: true });
   assert.equal(result.changed, true);
+  const vectors = await d1.prepare("SELECT COUNT(*) AS count FROM w_tool_vectors").first();
+  assert.equal(Number(vectors.count), 0, "small catalogs must not create vector search data");
   const row = await d1.prepare(
     "SELECT tool_ref FROM w_tools WHERE tool_ref LIKE 'sample:%' AND enabled = 1",
   ).first();
@@ -86,6 +88,33 @@ test("registry normalizes installed actions into immutable plugin tool reference
     "SELECT kind FROM w_capabilities WHERE plugin_version_id = 'sample@1.0.0'",
   ).first();
   assert.equal(pluginKind.kind, "plugin");
+});
+
+test("search refreshes only a dirty registry and skips Workers AI for a small catalog", async () => {
+  assert.equal((await d1.prepare("SELECT value FROM w_meta WHERE key = 'registry_dirty'").first()).value, "0");
+  await d1.prepare("UPDATE connectors SET description = 'Updated sample records.' WHERE connector_id = 'sample'").run();
+  assert.equal((await d1.prepare("SELECT value FROM w_meta WHERE key = 'registry_dirty'").first()).value, "1");
+
+  let aiCalls = 0;
+  const originalRun = env.AI.run;
+  env.AI.run = async (...args) => {
+    aiCalls += 1;
+    return originalRun(...args);
+  };
+  try {
+    const server = await gateway.createWGatewayServer(env, request);
+    const response = await server._registeredTools.w_search.handler({
+      query: "sample items",
+      limit: 8,
+      filters: { connected_only: false, plugin_ids: [], target: "oneaiworkers-cloudflare" },
+    });
+    assert.equal(response.structuredContent.data.search_mode, "text");
+  } finally {
+    env.AI.run = originalRun;
+  }
+  assert.equal(aiCalls, 0);
+  assert.equal((await d1.prepare("SELECT value FROM w_meta WHERE key = 'registry_dirty'").first()).value, "0");
+  assert.equal((await d1.prepare("SELECT description FROM w_plugins WHERE id = 'sample'").first()).description, "Updated sample records.");
 });
 
 test("a validated executable skill becomes searchable and uses its fixed runtime", async () => {
@@ -428,6 +457,9 @@ test("search and execution logs store hashes instead of raw inputs", async () =>
 });
 
 test("query embeddings never receive credentials pasted into search", async () => {
+  const admin = await gateway.createWAdminServer(env, request);
+  await admin._registeredTools.w_embedding_rebuild.handler({});
+  env.W_SEMANTIC_PLUGIN_THRESHOLD = "1";
   const syntheticSecret = ["sk", "query-secret-value-1234567890"].join("-");
   const seen = [];
   const originalRun = env.AI.run;
@@ -442,12 +474,13 @@ test("query embeddings never receive credentials pasted into search", async () =
     });
   } finally {
     env.AI.run = originalRun;
+    delete env.W_SEMANTIC_PLUGIN_THRESHOLD;
   }
   assert.equal(seen.join(" ").includes("query-secret-value"), false);
   assert.match(seen.join(" "), /\[redacted\]/u);
 });
 
-test("plugin search documents and embeddings never contain secret values", async () => {
+test("plugin search documents never contain secret values", async () => {
   const admin = await gateway.createWAdminServer(env, request);
   const manifest = executableSkillManifest();
   manifest.id = "secret-safe-plugin";

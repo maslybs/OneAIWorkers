@@ -15,8 +15,11 @@ import {
 import { NATIVE_TOOLS } from "../tools/native";
 import type { ActionRow, ConnectorRow } from "../tools/connectors/types";
 import { processEmbeddingJobs, rebuildVectorClusters } from "./embeddings";
+import { semanticPluginThreshold } from "./config";
 import { bumpCatalogRevision, ensureWGatewaySchema, metaValue, setMetaValue, wDatabase } from "./schema";
 import type { CapabilityKind, WExecutionPlan } from "./types";
+
+let registryInfrastructureReady: Promise<void> | null = null;
 
 interface RegistryToolInput {
   pluginId: string;
@@ -52,34 +55,75 @@ export async function syncWRegistry(
   env: Env,
   options: { force?: boolean; embeddings?: boolean; clusters?: boolean } = {},
 ): Promise<{ changed: boolean; revision: number; tools: number; embeddings?: unknown; clusters?: unknown }> {
-  await ensureConnectorSchema(env);
-  await ensureMarketplaceSchema(env);
-  await ensureCredentialSchema(env);
-  await ensureWGatewaySchema(env);
+  await ensureRegistryInfrastructure(env);
   const tools = await collectRegistryTools(env);
-  const fingerprint = await sha256Base64Url(JSON.stringify(tools.map((item) => ({
-    ref: toolRef(item),
-    schema: item.inputSchema,
-    description: item.description,
-    aliases: item.aliases || [],
-    plan: item.executionPlan,
-  }))));
+  const pluginCount = new Set(tools.map((item) => item.pluginId)).size;
+  const semanticEnabled = pluginCount >= semanticPluginThreshold(env);
+  const fingerprint = await sha256Base64Url(JSON.stringify(tools));
   const previous = await metaValue(env, "registry_fingerprint");
+  const dirty = await metaValue(env, "registry_dirty") !== "0";
   let revision = Number.parseInt(await metaValue(env, "catalog_revision") || "0", 10) || 0;
   let changed = options.force === true || fingerprint !== previous;
   if (changed) {
-    await writeRegistry(env, tools);
+    await writeRegistry(env, tools, semanticEnabled);
+  }
+  if (changed || dirty) {
     await syncLegacyConnections(env);
+  }
+  if (changed) {
     await setMetaValue(env, "registry_fingerprint", fingerprint);
     revision = await bumpCatalogRevision(env);
   }
-  const embeddingResult = options.embeddings === false ? undefined : await processEmbeddingJobs(env);
-  const clusterResult = options.clusters ? await rebuildVectorClusters(env) : undefined;
+  await setMetaValue(env, "registry_runtime_version", APP_VERSION);
+  await setMetaValue(env, "registry_dirty", "0");
+  const embeddingResult = options.embeddings === false || !semanticEnabled ? undefined : await processEmbeddingJobs(env);
+  const clusterResult = options.clusters && semanticEnabled ? await rebuildVectorClusters(env) : undefined;
   return { changed, revision, tools: tools.length, embeddings: embeddingResult, clusters: clusterResult };
 }
 
 export async function ensureWRegistryCurrent(env: Env): Promise<void> {
-  await syncWRegistry(env, { embeddings: true });
+  await ensureRegistryInfrastructure(env);
+  const rows = await wDatabase(env).prepare(
+    "SELECT key, value FROM w_meta WHERE key IN ('registry_fingerprint', 'registry_runtime_version', 'registry_dirty')",
+  ).all<{ key: string; value: string }>();
+  const state = new Map((rows.results || []).map((row) => [row.key, row.value]));
+  if (!state.get("registry_fingerprint") || state.get("registry_runtime_version") !== APP_VERSION || state.get("registry_dirty") !== "0") {
+    await syncWRegistry(env, { embeddings: true });
+  }
+}
+
+async function ensureRegistryInfrastructure(env: Env): Promise<void> {
+  if (!registryInfrastructureReady) {
+    registryInfrastructureReady = (async () => {
+      await ensureConnectorSchema(env);
+      await ensureMarketplaceSchema(env);
+      await ensureCredentialSchema(env);
+      await ensureWGatewaySchema(env);
+      const db = wDatabase(env);
+      const now = new Date().toISOString();
+      await db.prepare(
+        "INSERT OR IGNORE INTO w_meta (key, value, updated_at) VALUES ('registry_dirty', '1', ?)",
+      ).bind(now).run();
+      for (const table of ["connectors", "connector_actions", "connector_packages", "connector_credentials"]) {
+        for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
+          const trigger = `trg_w_${table}_${operation.toLowerCase()}_dirty`;
+          await db.prepare(
+            `CREATE TRIGGER IF NOT EXISTS ${trigger}
+             AFTER ${operation} ON ${table}
+             BEGIN
+               INSERT INTO w_meta (key, value, updated_at)
+               VALUES ('registry_dirty', '1', datetime('now'))
+               ON CONFLICT(key) DO UPDATE SET value = '1', updated_at = datetime('now');
+             END`,
+          ).run();
+        }
+      }
+    })().catch((error) => {
+      registryInfrastructureReady = null;
+      throw error;
+    });
+  }
+  await registryInfrastructureReady;
 }
 
 async function collectRegistryTools(env: Env): Promise<RegistryToolInput[]> {
@@ -204,7 +248,7 @@ async function collectRegistryTools(env: Env): Promise<RegistryToolInput[]> {
   return output.sort((left, right) => toolRef(left).localeCompare(toolRef(right)));
 }
 
-async function writeRegistry(env: Env, tools: RegistryToolInput[]): Promise<void> {
+async function writeRegistry(env: Env, tools: RegistryToolInput[], queueEmbeddings: boolean): Promise<void> {
   const db = wDatabase(env);
   const now = new Date().toISOString();
   const statements: D1PreparedStatement[] = [
@@ -285,15 +329,17 @@ async function writeRegistry(env: Env, tools: RegistryToolInput[]): Promise<void
         "INSERT OR IGNORE INTO w_tool_aliases (tool_id, alias, alias_type) VALUES (?, ?, 'synonym')",
       ).bind(toolId, redactSensitiveText(alias)));
     }
-    statements.push(db.prepare(
-      `INSERT INTO w_embedding_jobs (id, tool_id, reason, status, attempts, created_at)
-       SELECT ?, ?, 'registry_sync', 'queued', 0, ?
-       WHERE NOT EXISTS (
-         SELECT 1 FROM w_tool_vectors WHERE tool_id = ? AND source_text_hash = ?
-       ) AND NOT EXISTS (
-         SELECT 1 FROM w_embedding_jobs WHERE tool_id = ? AND status IN ('queued', 'running')
-       )`,
-    ).bind(await stableId("wej", `${ref}:${searchHash}`), toolId, now, toolId, searchHash, toolId));
+    if (queueEmbeddings) {
+      statements.push(db.prepare(
+        `INSERT INTO w_embedding_jobs (id, tool_id, reason, status, attempts, created_at)
+         SELECT ?, ?, 'registry_sync', 'queued', 0, ?
+         WHERE NOT EXISTS (
+           SELECT 1 FROM w_tool_vectors WHERE tool_id = ? AND source_text_hash = ?
+         ) AND NOT EXISTS (
+           SELECT 1 FROM w_embedding_jobs WHERE tool_id = ? AND status IN ('queued', 'running')
+         )`,
+      ).bind(await stableId("wej", `${ref}:${searchHash}`), toolId, now, toolId, searchHash, toolId));
+    }
   }
   await db.batch(statements);
 
@@ -313,6 +359,7 @@ async function writeRegistry(env: Env, tools: RegistryToolInput[]): Promise<void
 
 async function syncLegacyConnections(env: Env): Promise<void> {
   const db = wDatabase(env);
+  await db.prepare("DELETE FROM w_connections WHERE auth_type = 'legacy_vault'").run();
   const rows = await db.prepare(
     "SELECT connector_id, profile_id, updated_at FROM connector_credentials ORDER BY connector_id, profile_id",
   ).all<{ connector_id: string; profile_id: string; updated_at: number }>();

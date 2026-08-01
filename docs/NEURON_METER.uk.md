@@ -64,7 +64,7 @@ ai_neuron_history
 
 ```json
 {
-  "tool_ref": "oneaiworkers:workers-ai/ai_neuron_status@1.0.0",
+  "tool_ref": "oneaiworkers:workers-ai/ai_neuron_status@1.0.1",
   "arguments": {}
 }
 ```

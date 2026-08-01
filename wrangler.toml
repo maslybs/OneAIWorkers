@@ -36,6 +36,8 @@ PLUGIN_INSTALLER_URL = "https://workers.bgdn.dev"
 # UPDATE_SERVICE_URL = "https://updates.example.com/start"
 # PUBLIC_BASE_URL is optional. Set it after deploy if your MCP client needs a stable public URL.
 # PUBLIC_BASE_URL = "https://oneaiworkers.your-subdomain.workers.dev"
+# Vector search starts only when this many visible plugins exist and simple search is uncertain.
+# W_SEMANTIC_PLUGIN_THRESHOLD = "20"
 
 # Required secret. Set once with `npx wrangler secret put MCP_SHARED_SECRET` or via Dashboard as Secret.
 # MCP_SHARED_SECRET        - required; protects the OAuth connect page and shared-secret access

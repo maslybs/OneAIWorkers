@@ -2,6 +2,7 @@ import { randomToken, sha256Base64Url } from "../crypto";
 import { redactSensitiveText } from "../security";
 import { MODEL_PROFILES } from "../tools/ai";
 import type { Env } from "../types";
+import { semanticPluginThreshold } from "./config";
 import { cosineSimilarity, extractVectors, vectorFromBlob, vectorNorm } from "./embeddings";
 import { applyRequestFilters, loadPolicy } from "./policy";
 import { catalogRevision, ensureWGatewaySchema, wDatabase } from "./schema";
@@ -40,23 +41,36 @@ export async function wSearch(env: Env, context: WRequestContext, input: WSearch
   const explicitPlugins = new Set(filters.plugin_ids || []);
   for (const tool of allowed) if (queryTerms.includes(tool.plugin_id.toLowerCase())) explicitPlugins.add(tool.plugin_id);
   const lexical = await lexicalCandidates(env, query, allowedById);
-  const semantic = await semanticCandidates(env, context, query, allowedById, explicitPlugins);
+  const exact = new Map(allowed.map((tool) => [tool.id, exactScoreFor(tool, query, queryTerms)]));
+  const pluginCount = new Set(allowed.map((tool) => tool.plugin_id)).size;
+  const useSemantic = pluginCount >= semanticPluginThreshold(env) && !simpleSearchIsConfident(allowed, exact, lexical);
+  const semantic = useSemantic
+    ? await semanticCandidates(env, context, query, allowedById, explicitPlugins)
+    : { scores: new Map<string, number>(), model: null };
+  const semanticUsed = semantic.model !== null;
 
   const merged = new Map<string, WSearchCandidate>();
   for (const tool of allowed) {
-    const exactScore = exactScoreFor(tool, query, queryTerms);
+    const exactScore = exact.get(tool.id) || 0;
     if (exactScore <= 0 && !lexical.has(tool.id) && !semantic.scores.has(tool.id)) continue;
     const lexicalScore = lexical.get(tool.id) || 0;
     const semanticScore = semantic.scores.get(tool.id) || 0;
     const availabilityScore = tool.connection_type ? (tool.connected ? 1 : 0) : 1;
     const historicalSuccessScore = Number.isFinite(tool.historical_success) ? Number(tool.historical_success) : 0.5;
-    const score = clamp01(
-      0.50 * semanticScore +
-      0.25 * lexicalScore +
-      0.10 * exactScore +
-      0.10 * availabilityScore +
-      0.05 * historicalSuccessScore,
-    );
+    const score = semanticUsed
+      ? clamp01(
+        0.45 * semanticScore +
+        0.30 * lexicalScore +
+        0.15 * exactScore +
+        0.07 * availabilityScore +
+        0.03 * historicalSuccessScore,
+      )
+      : clamp01(
+        0.50 * exactScore +
+        0.35 * lexicalScore +
+        0.10 * availabilityScore +
+        0.05 * historicalSuccessScore,
+      );
     merged.set(tool.id, { ...tool, exactScore, lexicalScore, semanticScore, availabilityScore, historicalSuccessScore, score });
   }
   const ranked = [...merged.values()].sort((left, right) => right.score - left.score || left.tool_ref.localeCompare(right.tool_ref));
@@ -84,6 +98,7 @@ export async function wSearch(env: Env, context: WRequestContext, input: WSearch
   return {
     search_id: searchId,
     catalog_revision: revision,
+    search_mode: semanticUsed ? "hybrid" : "text",
     results: diverse.map(searchResultView),
     expires_at: expiresAt.toISOString(),
   };
@@ -241,6 +256,7 @@ async function semanticCandidates(
 ): Promise<{ scores: Map<string, number>; model: string | null }> {
   if (!env.AI || !allowed.size) return { scores: new Map(), model: null };
   const model = String(env.W_EMBEDDING_MODEL || MODEL_PROFILES.embedding);
+  if (!await hasAllowedVectors(env, model, allowed)) return { scores: new Map(), model: null };
   const permissionScopeHash = await sha256Base64Url(`${context.endpointId}:${[...allowed.keys()].sort().join(",")}`);
   const cacheKey = `${model}:${permissionScopeHash}:${query}`;
   let cached = EMBEDDING_CACHE.get(cacheKey);
@@ -342,12 +358,56 @@ function diversify(candidates: WSearchCandidate[], limit: number, explicitPlugin
 
 function exactScoreFor(tool: WToolRecord, query: string, queryTerms: string[]): number {
   const normalized = query.toLowerCase();
+  const pluginId = tool.plugin_id.toLowerCase();
+  const pluginName = tool.plugin_name.toLowerCase();
+  const method = tool.method_name.toLowerCase();
+  const methodPhrase = method.replaceAll("_", " ").replaceAll(".", " ");
   if (tool.tool_ref.toLowerCase() === normalized) return 1;
-  if (tool.plugin_id.toLowerCase() === normalized || tool.method_name.toLowerCase() === normalized) return 1;
-  if (normalized.includes(tool.plugin_id.toLowerCase()) || normalized.includes(tool.method_name.replaceAll("_", " ").toLowerCase())) return 0.85;
+  if (pluginId === normalized || pluginName === normalized || method === normalized || methodPhrase === normalized) return 1;
+  if (containsPhrase(normalized, method) || containsPhrase(normalized, methodPhrase)) return 0.92;
   const titleTerms = terms(`${tool.title} ${tool.description}`);
   const matches = queryTerms.filter((term) => titleTerms.includes(term)).length;
-  return queryTerms.length ? Math.min(0.75, matches / queryTerms.length) : 0;
+  const textScore = queryTerms.length ? Math.min(0.75, matches / queryTerms.length) : 0;
+  const pluginScore = queryTerms.includes(pluginId) || containsPhrase(normalized, pluginName) ? 0.25 : 0;
+  return Math.max(textScore, pluginScore);
+}
+
+function simpleSearchIsConfident(
+  tools: WToolRecord[],
+  exact: Map<string, number>,
+  lexical: Map<string, number>,
+): boolean {
+  const ranked = tools.map((tool) => ({
+    exact: exact.get(tool.id) || 0,
+    lexical: lexical.get(tool.id) || 0,
+  })).sort((left, right) => (right.exact + right.lexical) - (left.exact + left.lexical));
+  const best = ranked[0];
+  const second = ranked[1];
+  if (!best) return false;
+  if (best.exact >= 0.9) return true;
+  const lead = best.exact + best.lexical - ((second?.exact || 0) + (second?.lexical || 0));
+  return best.exact >= 0.7 && best.lexical >= 0.8 && lead >= 0.2;
+}
+
+async function hasAllowedVectors(env: Env, model: string, allowed: Map<string, WToolRecord>): Promise<boolean> {
+  const ids = [...allowed.keys()];
+  for (let offset = 0; offset < ids.length; offset += 400) {
+    const chunk = ids.slice(offset, offset + 400);
+    const row = await wDatabase(env).prepare(
+      `SELECT v.tool_id FROM w_tool_vectors v
+       JOIN w_tools t ON t.id = v.tool_id
+       WHERE v.embedding_model = ? AND t.enabled = 1
+         AND v.tool_id IN (${chunk.map(() => "?").join(",")})
+       LIMIT 1`,
+    ).bind(model, ...chunk).first<{ tool_id: string }>();
+    if (row?.tool_id) return true;
+  }
+  return false;
+}
+
+function containsPhrase(value: string, phrase: string): boolean {
+  if (!phrase) return false;
+  return ` ${value.replace(/[^\p{L}\p{N}_:@.-]+/gu, " ")} `.includes(` ${phrase} `);
 }
 
 function ftsExpression(query: string): string {

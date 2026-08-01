@@ -11,6 +11,9 @@ MCP_SHARED_SECRET=
 # Optional. Use only if your MCP client needs a fixed public URL.
 # PUBLIC_BASE_URL=http://localhost:8787
 
+# Optional. Vector search starts only for larger catalogs. Default: 20 plugins.
+# W_SEMANTIC_PLUGIN_THRESHOLD=20
+
 # Optional. Telegram messages.
 # TELEGRAM_BOT_TOKEN=
 # TELEGRAM_CHAT_ID=

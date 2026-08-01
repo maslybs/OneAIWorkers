@@ -26,6 +26,7 @@ export interface Env {
   // Optional R2 storage for W Gateway results larger than the inline MCP limit.
   W_RESULTS_BUCKET?: R2Bucket;
   W_EMBEDDING_MODEL?: string;
+  W_SEMANTIC_PLUGIN_THRESHOLD?: string;
   W_ENABLE_LEGACY_DIRECT?: string;
   W_ADMIN_SECRET?: string;
 

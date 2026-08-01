@@ -145,7 +145,7 @@ async function mcpRequest(baseUrl, accessToken, id, method, params = {}) {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
   assert.equal(response.headers.get("pragma"), "no-cache");
-  assert.equal(response.headers.get("x-oneaiworkers-runtime"), "1.0.0");
+  assert.equal(response.headers.get("x-oneaiworkers-runtime"), "1.0.1");
   assert.match(response.headers.get("vary") || "", /authorization/u);
   return response.json();
 }
@@ -253,13 +253,13 @@ test("OAuth uses S256, rotates refresh tokens, checks resource, revokes, and rat
   const liveRuntimeCall = await mcpRequest(worker.baseUrl, issued.payload.access_token, 102, "tools/call", {
     name: "w_call",
     arguments: {
-      tool_ref: "oneaiworkers:system/runtime_info@1.0.0",
+      tool_ref: "oneaiworkers:system/runtime_info@1.0.1",
       arguments: {},
     },
   });
   assert.equal(liveRuntimeCall.result.isError, false);
   assert.equal(liveRuntimeCall.result.structuredContent.data.ok, true);
-  assert.equal(liveRuntimeCall.result.structuredContent.data.result.result.version, "1.0.0");
+  assert.equal(liveRuntimeCall.result.structuredContent.data.result.result.version, "1.0.1");
 
   const queryAccess = await fetch(
     `${worker.baseUrl}/mcp?access_token=${encodeURIComponent(issued.payload.access_token)}`,
@@ -287,7 +287,7 @@ test("OAuth uses S256, rotates refresh tokens, checks resource, revokes, and rat
   const afterRefresh = await mcpRequest(worker.baseUrl, refreshed.payload.access_token, 103, "tools/call", {
     name: "w_call",
     arguments: {
-      tool_ref: "oneaiworkers:system/runtime_info@1.0.0",
+      tool_ref: "oneaiworkers:system/runtime_info@1.0.1",
       arguments: {},
       search_id: overviewCall.result.structuredContent.data.search_id,
     },
