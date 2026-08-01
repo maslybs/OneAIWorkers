@@ -79,12 +79,12 @@ test("every W Gateway response reports an available OneAIWorkers update", async 
   const originalFetch = globalThis.fetch;
   let manifestRequests = 0;
   env.UPDATE_CHECK_ENABLED = "true";
-  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.0.3.json";
+  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.1.1.json";
   globalThis.fetch = async () => {
     manifestRequests += 1;
     return Response.json({
       schema_version: 1,
-      latest_version: "1.0.3",
+      latest_version: "1.1.1",
       critical: false,
       message: { en: "New update.", uk: "Доступне нове оновлення." },
     });
@@ -129,6 +129,61 @@ test("registry normalizes installed actions into immutable plugin tool reference
     "SELECT kind FROM w_capabilities WHERE plugin_version_id = 'sample@1.0.0'",
   ).first();
   assert.equal(pluginKind.kind, "plugin");
+});
+
+test("an existing internal n8n plugin migrates its Cloudflare key and stays connected through encrypted D1", async () => {
+  env.CREDENTIALS_MASTER_KEY = "x".repeat(48);
+  env.N8N_PSY_API_KEY = `test_${"n".repeat(40)}`;
+  const expectedApiKey = env.N8N_PSY_API_KEY;
+  await seedInternalN8nPlugin(d1);
+  await gateway.syncWRegistry(env, { force: true, embeddings: false });
+
+  const stored = await d1.prepare(
+    "SELECT encrypted_json FROM connector_credentials WHERE connector_id = 'n8n-psy' AND profile_id = 'user'",
+  ).first();
+  assert.ok(stored?.encrypted_json);
+  assert.equal(stored.encrypted_json.includes(env.N8N_PSY_API_KEY), false);
+  delete env.N8N_PSY_API_KEY;
+
+  const connection = await d1.prepare(
+    "SELECT status, auth_type FROM w_connections WHERE plugin_id = 'n8n-psy' AND connection_type = 'n8n-psy'",
+  ).first();
+  assert.equal(connection.status, "active");
+  assert.equal(connection.auth_type, "managed_vault");
+
+  const tool = await d1.prepare(
+    "SELECT tool_ref FROM w_tools WHERE tool_ref LIKE 'n8n-psy:%' AND method_name = 'list_workflows' AND enabled = 1",
+  ).first();
+  assert.ok(tool?.tool_ref);
+  let receivedKey = "";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    receivedKey = new Headers(init.headers).get("x-n8n-api-key") || "";
+    return Response.json({ data: [{ id: "workflow-1", name: "Main" }] });
+  };
+  try {
+    const called = await gateway.wCall(env, context, { tool_ref: tool.tool_ref, arguments: {} });
+    assert.equal(called.ok, true, JSON.stringify(called));
+    assert.equal(receivedKey, expectedApiKey);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const settingsTool = await d1.prepare(
+    "SELECT tool_ref FROM w_tools WHERE tool_ref LIKE 'oneaiworkers:%' AND method_name = 'get_plugin_settings_link' AND enabled = 1",
+  ).first();
+  const settings = await gateway.wCall(env, context, {
+    tool_ref: settingsTool.tool_ref,
+    arguments: { plugin_id: "n8n-psy" },
+  });
+  assert.equal(settings.ok, true, JSON.stringify(settings));
+  assert.match(JSON.stringify(settings), /\/plugins\/access\//u);
+
+  await d1.prepare("DELETE FROM connector_actions WHERE connector_id = 'n8n-psy'").run();
+  await d1.prepare("DELETE FROM connectors WHERE connector_id = 'n8n-psy'").run();
+  await d1.prepare("DELETE FROM connector_credentials WHERE connector_id = 'n8n-psy'").run();
+  await gateway.syncWRegistry(env, { force: true, embeddings: false });
+  delete env.CREDENTIALS_MASTER_KEY;
 });
 
 test("search refreshes only a dirty registry and skips Workers AI for a small catalog", async () => {
@@ -442,6 +497,51 @@ test("the public MCP response preserves the one-time confirmation token", async 
   assert.equal(response.structuredContent.data.confirmation_required, true);
   assert.match(response.structuredContent.data.confirmation_token, /^[A-Za-z0-9_-]{20,}$/u);
   assert.notEqual(response.structuredContent.data.confirmation_token, "[redacted]");
+  assert.equal(response.structuredContent.retry_same_action_after_approval, true);
+  assert.equal(response.structuredContent.do_not_only_check_plugin_list, true);
+  assert.equal(response.structuredContent.confirmation_token, response.structuredContent.data.confirmation_token);
+});
+
+test("one confirmation deletes several temporary plugins and their saved settings", async () => {
+  env.CREDENTIALS_MASTER_KEY = "x".repeat(48);
+  env.TEMP_API_KEY = `test_${"t".repeat(40)}`;
+  await seedTemporaryPlugins(d1);
+  await gateway.syncWRegistry(env, { force: true, embeddings: false });
+  delete env.TEMP_API_KEY;
+  const deleteTool = await d1.prepare(
+    "SELECT tool_ref FROM w_tools WHERE tool_ref LIKE 'oneaiworkers:%' AND method_name = 'delete_plugins' AND enabled = 1",
+  ).first();
+  assert.ok(deleteTool?.tool_ref);
+  const pluginIds = ["n8n-spec-temp", "n8n-ui-temp", "n8n-psy-internal-temp"];
+  const first = await gateway.wCall(env, context, {
+    tool_ref: deleteTool.tool_ref,
+    arguments: { plugin_ids: pluginIds },
+  });
+  assert.equal(first.confirmation_required, true);
+  const browser = await gateway.openConfirmationApproval(env, first.confirmation_token);
+  assert.ok(browser);
+  assert.equal((await gateway.approveConfirmation(env, first.confirmation_token, browser.browserNonce)).ok, true);
+  const deleted = await gateway.wCall(env, context, {
+    tool_ref: deleteTool.tool_ref,
+    arguments: { plugin_ids: pluginIds },
+    confirmation_token: first.confirmation_token,
+  });
+  assert.equal(deleted.ok, true, JSON.stringify(deleted));
+  assert.deepEqual(
+    (await d1.prepare("SELECT connector_id FROM connectors WHERE connector_id LIKE '%-temp' ORDER BY connector_id").all()).results,
+    [],
+  );
+  assert.deepEqual(
+    (await d1.prepare("SELECT connector_id FROM connector_credentials WHERE connector_id LIKE '%-temp' ORDER BY connector_id").all()).results,
+    [],
+  );
+  await gateway.syncWRegistry(env, { force: true, embeddings: false });
+  const overview = await gateway.wSearch(env, context, {
+    query: "",
+    filters: { connected_only: false, target: "oneaiworkers-cloudflare" },
+  });
+  assert.equal(overview.plugins.some((plugin) => pluginIds.includes(plugin.plugin_id)), false);
+  delete env.CREDENTIALS_MASTER_KEY;
 });
 
 test("large result references cannot be read by another tenant or session", async () => {
@@ -583,6 +683,44 @@ async function seedLegacyPlugin(db) {
      VALUES ('sample', 'sample', 'cloudflare-worker', '1.0.0', 'sha256:test', NULL, '[]',
        'https://marketplace.example/api/catalog', ?, ?)`,
   ).bind(now, now).run();
+}
+
+async function seedInternalN8nPlugin(db) {
+  const now = Math.floor(Date.now() / 1_000);
+  await db.prepare(
+    `INSERT INTO connectors
+       (connector_id, name, description, mode, child_worker_url, child_worker_binding,
+        child_worker_token_secret, child_worker_token_credential, enabled, created_at, updated_at)
+     VALUES ('n8n-psy', 'n8n PSY', 'Persistent n8n access.', 'internal', NULL, NULL, NULL, NULL, 1, ?, ?)`,
+  ).bind(now, now).run();
+  await db.prepare(
+    `INSERT INTO connector_actions
+       (connector_id, action_name, description, method, url, auth_json, headers_json,
+        query_json, body_template_json, input_schema_json, created_at, updated_at)
+     VALUES ('n8n-psy', 'list_workflows', 'List n8n workflows.', 'GET', 'https://n8n.example/api/v1/workflows',
+       '{"type":"api_key_header_secret","secret_name":"N8N_PSY_API_KEY","header_name":"X-N8N-API-KEY"}',
+       '{}', '{}', NULL, '{"type":"object","properties":{},"additionalProperties":false}', ?, ?)`,
+  ).bind(now, now).run();
+}
+
+async function seedTemporaryPlugins(db) {
+  const now = Math.floor(Date.now() / 1_000);
+  for (const pluginId of ["n8n-spec-temp", "n8n-ui-temp", "n8n-psy-internal-temp"]) {
+    await db.prepare(
+      `INSERT INTO connectors
+         (connector_id, name, description, mode, child_worker_url, child_worker_binding,
+          child_worker_token_secret, child_worker_token_credential, enabled, created_at, updated_at)
+       VALUES (?, ?, 'Temporary test plugin.', 'internal', NULL, NULL, NULL, NULL, 1, ?, ?)`,
+    ).bind(pluginId, `Temporary ${pluginId}`, now, now).run();
+    await db.prepare(
+      `INSERT INTO connector_actions
+         (connector_id, action_name, description, method, url, auth_json, headers_json,
+          query_json, body_template_json, input_schema_json, created_at, updated_at)
+       VALUES (?, 'check', 'Temporary check.', 'GET', 'https://temporary.example/check',
+         '{"type":"bearer_secret","secret_name":"TEMP_API_KEY"}', '{}', '{}', NULL,
+         '{"type":"object","properties":{},"additionalProperties":false}', ?, ?)`,
+    ).bind(pluginId, now, now).run();
+  }
 }
 
 function executableSkillManifest() {

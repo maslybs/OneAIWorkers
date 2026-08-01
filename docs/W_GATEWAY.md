@@ -54,6 +54,14 @@ It validates the stored schema, permissions, account connection, required scopes
 
 Results larger than 24,000 characters are stored in D1 or R2. The response contains a preview and `result_id`; `w_result_read` reads only an authorized part for the same tenant, user, endpoint, and session.
 
+## Plugin credentials
+
+Encrypted D1 records are the single source of truth for plugin credentials. The protected settings page works for both marketplace plugins and manually added plugins.
+
+When an older internal plugin still uses a Cloudflare secret such as `N8N_PSY_API_KEY`, OneAIWorkers copies the existing value into encrypted D1 storage during registry synchronization. Calls then use the managed D1 value, and the W Gateway reports the plugin as connected. Saving new values marks the registry stale, so the next `w_call` or `w_search` refreshes connection state automatically.
+
+`delete_plugins` removes several selected plugins and their saved settings under one user confirmation. After browser approval, the MCP client must repeat the same `w_call` with unchanged arguments and the returned confirmation token. Listing plugins alone does not execute the approved deletion.
+
 ## `oneai.plugin.v1`
 
 Minimal envelope:

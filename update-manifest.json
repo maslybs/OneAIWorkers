@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "1.0.2",
+  "latest_version": "1.1.0",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 1.0.2 makes every W Gateway response announce a newer OneAIWorkers version and put the browser update link first.",
-    "uk": "OneAIWorkers 1.0.2 у кожній відповіді W Gateway повідомляє про новішу версію OneAIWorkers і ставить посилання для оновлення на початок."
+    "en": "OneAIWorkers 1.1.0 unifies plugin credentials in encrypted D1 storage, migrates existing Cloudflare secrets, keeps plugin connection state current, and supports confirmed bulk plugin cleanup.",
+    "uk": "OneAIWorkers 1.1.0 об’єднує ключі плагінів у зашифрованому сховищі D1, переносить наявні ключі Cloudflare, підтримує актуальний стан підключення та дозволяє підтверджене групове видалення плагінів."
   }
 }

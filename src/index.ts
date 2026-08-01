@@ -37,8 +37,9 @@ import {
   storeCredentialProfile,
   validateConnectorSession,
 } from "./vault";
-import { parseCredentialFields, registerInstalledConnector } from "./connector-installation";
+import { registerInstalledConnector } from "./connector-installation";
 import { getInstalledPackage, getMarketplaceItem } from "./marketplace";
+import { getPluginCredentialDefinition } from "./tools/integrations";
 import { approveConfirmation, createWAdminServer, openConfirmationApproval } from "./w-gateway";
 
 export { AgentManager } from "./agents";
@@ -178,11 +179,9 @@ export default {
         if (!(await validateConnectorSession(env, connectorId, session))) {
           return json({ ok: false, error: biInline("This settings link has expired. Ask your MCP client for a new settings link.", "Термін дії посилання минув. Попросіть MCP-клієнт створити нове посилання на налаштування.") }, { status: 401 });
         }
-        const installed = await getInstalledPackage(env, connectorId);
-        if (!installed) return json({ ok: false, error: biInline("Installed plugin not found.", "Встановлений плагін не знайдено.") }, { status: 404 });
-        const fields = parseCredentialFields(installed.credential_fields_json);
-        const entry = await getMarketplaceItem(env, installed.package_id);
-        const connectorName = entry?.item.name || installed.package_id;
+        const definition = await getPluginCredentialDefinition(env, connectorId);
+        const fields = definition.fields;
+        const connectorName = definition.name;
         const language = pageLanguage(url, request);
         const existing = await loadCredentialProfile(env, connectorId, "user");
 

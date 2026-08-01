@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { APP_VERSION } from "../update";
-import { createConnectorAccessToken, deleteConnectorCredentials, loadCredentialProfile } from "../vault";
+import {
+  createConnectorAccessToken,
+  credentialsReady,
+  ensureCredentialSchema,
+  loadCredentialProfile,
+  storeCredentialProfile,
+  type CredentialField,
+} from "../vault";
 import {
   connectorInstallationHelp,
   connectorInstallationHelpSchema,
@@ -62,6 +69,10 @@ export const connectorIdSchema = {
   connector_id: z.string().min(2).max(80),
 };
 
+export const deletePluginsSchema = {
+  plugin_ids: z.array(z.string().min(2).max(80)).min(1).max(20),
+};
+
 export const callConnectorToolSchema = {
   connector_id: z.string().min(2).max(80),
   action_name: z.string().min(1).max(80),
@@ -114,6 +125,7 @@ export const SYSTEM_ACTIONS: SystemActionDefinition[] = [
   systemAction("save_connector", "Creates or updates a connector manifest in D1.", saveConnectorSchema, { readOnly: false, requiresConfirmation: true }),
   systemAction("test_connector", "Tests a connector action, using dry-run by default.", testConnectorSchema, { readOnly: false }),
   systemAction("delete_connector", "Deletes a connector and its stored credentials.", connectorIdSchema, { readOnly: false, requiresConfirmation: true }),
+  systemAction("delete_plugins", "Deletes several plugins and all of their stored settings in one confirmed action.", deletePluginsSchema, { readOnly: false, requiresConfirmation: true }),
 ];
 
 export interface ConnectorMcpTool {
@@ -128,6 +140,20 @@ export interface ConnectorMcpTool {
   read_only: boolean;
   destructive: boolean;
   side_effect: boolean;
+}
+
+export interface PluginCredentialDefinition {
+  connector_id: string;
+  name: string;
+  fields: CredentialField[];
+  source: "marketplace" | "manifest" | "none";
+}
+
+export interface PluginCredentialState extends PluginCredentialDefinition {
+  required: boolean;
+  ready: boolean;
+  storage: "encrypted_d1" | "cloudflare_secret" | "none" | "incomplete";
+  updated_at: number;
 }
 
 interface ConnectorActionToolRow extends ActionRow {
@@ -249,7 +275,8 @@ export async function connectorSetupStatus(env: Env, args: z.infer<z.ZodObject<t
   await ensureConnectorSchema(env);
   const actionRows = await db.prepare("SELECT * FROM connector_actions ORDER BY connector_id, action_name").all<ActionRow>();
   const connectorRows = await db.prepare("SELECT * FROM connectors WHERE enabled = 1 ORDER BY connector_id").all<ConnectorRow>();
-  const requiredSecrets = collectRequiredSecrets(env, actionRows.results || [], connectorRows.results || []);
+  const credentialStates = await listPluginCredentialStates(env);
+  const requiredSecrets = await collectRequiredSecrets(env, actionRows.results || [], connectorRows.results || []);
   const serviceBindings = collectServiceBindings(env, connectorRows.results || []);
   return {
     ok: true,
@@ -260,8 +287,14 @@ export async function connectorSetupStatus(env: Env, args: z.infer<z.ZodObject<t
       supported_child_invocations: ["service_binding", "protected_url"],
     },
     connectors: args.include_connectors ? (await listConnectors(env, { include_actions: true })).connectors : undefined,
+    plugin_credentials: credentialStates.map((state) => ({
+      plugin_id: state.connector_id,
+      required: state.required,
+      ready: state.ready,
+      storage: state.storage,
+    })),
     required_secrets: requiredSecrets,
-    missing_secrets: requiredSecrets.filter((item) => !item.configured).map((item) => item.name),
+    missing_secrets: requiredSecrets.filter((item) => !item.configured).map((item) => `${item.plugin_id}:${item.name}`),
     service_bindings: serviceBindings,
     missing_service_bindings: serviceBindings.filter((item) => !item.configured).map((item) => item.name),
   };
@@ -347,6 +380,12 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
   for (const row of rows.results || []) {
     const item: JsonObject = publicConnector(row);
     const installedPackage = await getInstalledPackage(env, row.connector_id);
+    const credentialState = await getPluginCredentialState(env, row.connector_id);
+    item.credentials = {
+      required: credentialState.required,
+      configured: credentialState.ready,
+      storage: credentialState.storage,
+    };
     if (installedPackage) {
       const fields = parseJson<Array<{ id?: unknown; required?: unknown }>>(installedPackage.credential_fields_json, []);
       const credentials = env.CREDENTIALS_MASTER_KEY
@@ -367,18 +406,12 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
 }
 
 export async function getConnectorSettingsLink(env: Env, baseUrl: string, connectorId: string) {
-  const installed = await getInstalledPackage(env, connectorId);
-  if (!installed) {
-    throw new Error(biInline(
-      "Installed marketplace connector not found.",
-      "Встановлений конектор із каталогу не знайдено.",
-    ));
-  }
-  const token = await createConnectorAccessToken(env, installed.connector_id);
-  const settingsUrl = `${requireBaseUrl(baseUrl)}/connectors/access/${encodeURIComponent(token)}`;
+  const definition = await getPluginCredentialDefinition(env, connectorId);
+  const token = await createConnectorAccessToken(env, definition.connector_id);
+  const settingsUrl = `${requireBaseUrl(baseUrl)}/plugins/access/${encodeURIComponent(token)}`;
   return {
     ok: true,
-    connector_id: installed.connector_id,
+    connector_id: definition.connector_id,
     settings_url: settingsUrl,
     expires_in_seconds: 600,
     response_instruction: biInline(
@@ -386,6 +419,79 @@ export async function getConnectorSettingsLink(env: Env, baseUrl: string, connec
       `Поставте це посилання першим і скажіть користувачу відкрити його у звичайному браузері: ${settingsUrl}`,
     ),
   };
+}
+
+export async function getPluginCredentialDefinition(env: Env, connectorId: string): Promise<PluginCredentialDefinition> {
+  const normalized = normalizeKey(connectorId);
+  const db = getDb(env);
+  await ensureConnectorSchema(env);
+  const connector = await db.prepare(
+    "SELECT * FROM connectors WHERE connector_id = ? AND enabled = 1",
+  ).bind(normalized).first<ConnectorRow>();
+  if (!connector) throw new Error(biInline("Plugin not found.", "Плагін не знайдено."));
+
+  const actions = await db.prepare(
+    "SELECT * FROM connector_actions WHERE connector_id = ? ORDER BY action_name",
+  ).bind(normalized).all<ActionRow>();
+  const installed = await getInstalledPackage(env, normalized);
+  const marketplaceFields = installed ? parseStoredCredentialFields(installed.credential_fields_json) : [];
+  const inferredFields = inferCredentialFields(actions.results || []);
+  const fields = mergeCredentialFields(marketplaceFields, inferredFields);
+  return {
+    connector_id: normalized,
+    name: connector.name,
+    fields,
+    source: marketplaceFields.length ? "marketplace" : inferredFields.length ? "manifest" : "none",
+  };
+}
+
+export async function getPluginCredentialState(env: Env, connectorId: string): Promise<PluginCredentialState> {
+  const definition = await getPluginCredentialDefinition(env, connectorId);
+  const credentials = definition.fields.length && env.CREDENTIALS_MASTER_KEY
+    ? await loadCredentialProfile(env, definition.connector_id, "user")
+    : {};
+  const effective = { ...legacySecretValues(env, definition.fields), ...credentials };
+  const required = definition.fields.some((field) => field.required);
+  const ready = credentialsReady(effective, definition.fields);
+  const managedReady = credentialsReady(credentials, definition.fields);
+  const legacyReady = credentialsReady(legacySecretValues(env, definition.fields), definition.fields);
+  const connector = await getDb(env).prepare(
+    "SELECT updated_at FROM connectors WHERE connector_id = ?",
+  ).bind(definition.connector_id).first<{ updated_at: number }>();
+  return {
+    ...definition,
+    required,
+    ready,
+    storage: !required ? "none" : managedReady ? "encrypted_d1" : legacyReady ? "cloudflare_secret" : "incomplete",
+    updated_at: connector?.updated_at || nowSeconds(),
+  };
+}
+
+export async function listPluginCredentialStates(env: Env): Promise<PluginCredentialState[]> {
+  const db = getDb(env);
+  await ensureConnectorSchema(env);
+  const rows = await db.prepare(
+    "SELECT connector_id FROM connectors WHERE enabled = 1 ORDER BY connector_id",
+  ).all<{ connector_id: string }>();
+  const states: PluginCredentialState[] = [];
+  for (const row of rows.results || []) states.push(await getPluginCredentialState(env, row.connector_id));
+  return states;
+}
+
+export async function migrateLegacyPluginCredentials(env: Env): Promise<{ migrated: string[] }> {
+  if (!env.CREDENTIALS_MASTER_KEY || !env.OAUTH_DB) return { migrated: [] };
+  const states = await listPluginCredentialStates(env);
+  const migrated: string[] = [];
+  for (const state of states) {
+    if (!state.fields.length) continue;
+    const existing = await loadCredentialProfile(env, state.connector_id, "user");
+    const legacy = legacySecretValues(env, state.fields);
+    const merged = { ...legacy, ...existing };
+    if (Object.keys(merged).length === Object.keys(existing).length) continue;
+    await storeCredentialProfile(env, state.connector_id, "user", merged);
+    migrated.push(state.connector_id);
+  }
+  return { migrated };
 }
 
 function systemConnectorView(env: Env, includeActions: boolean): JsonObject {
@@ -523,6 +629,9 @@ async function callSystemTool(
     case "delete_connector":
       result = await deleteConnector(env, parseSystemInput(connectorIdSchema, parsed.data));
       break;
+    case "delete_plugins":
+      result = await deletePlugins(env, parseSystemInput(deletePluginsSchema, parsed.data));
+      break;
     default:
       throw new Error(`Unsupported system action: ${action.name}`);
   }
@@ -552,7 +661,7 @@ function isSystemConnectorId(connectorId: string): boolean {
 }
 
 function systemActionAvailable(env: Env, actionName: string): boolean {
-  if (["list_connector_updates", "get_connector_settings_link", "save_connector", "test_connector", "delete_connector"].includes(actionName)) {
+  if (["list_connector_updates", "get_connector_settings_link", "save_connector", "test_connector", "delete_connector", "delete_plugins"].includes(actionName)) {
     return Boolean(env.OAUTH_DB);
   }
   return true;
@@ -595,21 +704,47 @@ function requireBaseUrl(baseUrl: string): string {
 
 export async function deleteConnector(env: Env, args: z.infer<z.ZodObject<typeof connectorIdSchema>>) {
   const connectorId = normalizeKey(args.connector_id);
-  if (isNativeConnectorId(connectorId) || isSystemConnectorId(connectorId)) {
-    throw new Error(biInline(
-      "Virtual system connectors cannot be deleted.",
-      "Віртуальні системні конектори не можна видалити.",
-    ));
+  const result = await deletePlugins(env, { plugin_ids: [connectorId] });
+  return { ok: true, connector_id: connectorId, deleted: result.deleted_plugin_ids.includes(connectorId) };
+}
+
+export async function deletePlugins(env: Env, args: z.infer<z.ZodObject<typeof deletePluginsSchema>>) {
+  const pluginIds = [...new Set(args.plugin_ids.map(normalizeKey))];
+  for (const pluginId of pluginIds) {
+    if (isNativeConnectorId(pluginId) || isSystemConnectorId(pluginId)) {
+      throw new Error(biInline(
+        `System plugin cannot be deleted: ${pluginId}`,
+        `Системний плагін не можна видалити: ${pluginId}`,
+      ));
+    }
   }
   const db = getDb(env);
   await ensureConnectorSchema(env);
-  await db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId).run();
-  await db.prepare("DELETE FROM connectors WHERE connector_id = ?").bind(connectorId).run();
   await ensureMarketplaceSchema(env);
-  await db.prepare("DELETE FROM connector_packages WHERE connector_id = ?").bind(connectorId).run();
-  await deleteConnectorCredentials(env, connectorId);
-  await audit(db, connectorId, null, "delete_connector", true, "Deleted connector");
-  return { ok: true, connector_id: connectorId };
+  await ensureCredentialSchema(env);
+  const existing: string[] = [];
+  for (const pluginId of pluginIds) {
+    const row = await db.prepare("SELECT connector_id FROM connectors WHERE connector_id = ?")
+      .bind(pluginId).first<{ connector_id: string }>();
+    if (row) existing.push(pluginId);
+  }
+  const statements: D1PreparedStatement[] = [];
+  for (const pluginId of existing) {
+    statements.push(db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(pluginId));
+    statements.push(db.prepare("DELETE FROM connectors WHERE connector_id = ?").bind(pluginId));
+    statements.push(db.prepare("DELETE FROM connector_packages WHERE connector_id = ?").bind(pluginId));
+    statements.push(db.prepare("DELETE FROM connector_credentials WHERE connector_id = ?").bind(pluginId));
+    statements.push(db.prepare("DELETE FROM connector_access_tokens WHERE connector_id = ?").bind(pluginId));
+    statements.push(db.prepare(
+      "INSERT INTO connector_audit_log (id, connector_id, action_name, event, ok, message, created_at) VALUES (?, ?, NULL, 'delete_plugin', 1, 'Deleted plugin and stored settings', ?)",
+    ).bind(crypto.randomUUID(), pluginId, nowSeconds()));
+  }
+  if (statements.length) await db.batch(statements);
+  return {
+    ok: true,
+    deleted_plugin_ids: existing,
+    not_found_plugin_ids: pluginIds.filter((pluginId) => !existing.includes(pluginId)),
+  };
 }
 
 export async function testConnector(
@@ -771,7 +906,17 @@ async function callInternalAction(env: Env, action: ActionRow, input: JsonObject
     if (renderedValue !== "") url.searchParams.set(key, renderedValue);
   }
 
-  await applyConnectorAuth(env, url, headers, parseJson<AuthConfig>(action.auth_json, { type: "none" }));
+  const auth = parseJson<AuthConfig>(action.auth_json, { type: "none" });
+  const credentials = getAuthSecretNames(auth).length && env.CREDENTIALS_MASTER_KEY
+    ? await loadCredentialProfile(env, action.connector_id, "user")
+    : {};
+  await applyConnectorAuth(
+    env,
+    url,
+    headers,
+    auth,
+    credentials,
+  );
 
   const body = buildRequestBody(action, input, method, headers);
   const prepared = {
@@ -841,24 +986,102 @@ function protectedRequestValues(headers: Headers, url?: URL): string[] {
 
 async function listActionsForConnector(env: Env, db: D1Database, connectorId: string) {
   const rows = await db.prepare("SELECT * FROM connector_actions WHERE connector_id = ? ORDER BY action_name").bind(connectorId).all<ActionRow>();
+  const needsCredentials = (rows.results || []).some((row) =>
+    getAuthSecretNames(parseJson<AuthConfig>(row.auth_json, { type: "none" })).length > 0
+  );
+  const credentials = needsCredentials && env.CREDENTIALS_MASTER_KEY
+    ? await loadCredentialProfile(env, connectorId, "user")
+    : {};
   return (rows.results || []).map((row) => ({
     name: row.action_name,
     mcp_tool_name: `${toolNamePart(row.connector_id)}_${toolNamePart(row.action_name)}`,
     description: row.description,
     method: row.method,
     url: redactTemplatedUrl(row.url),
-    auth: publicAuth(parseJson<AuthConfig>(row.auth_json, { type: "none" }), env),
+    auth: publicAuth(parseJson<AuthConfig>(row.auth_json, { type: "none" }), env, credentials),
     read_only: isReadOnlyConnectorAction(row),
     side_effect: !isReadOnlyConnectorAction(row),
     input_schema: row.input_schema_json ? parseJson<unknown>(row.input_schema_json, null) : null,
   }));
 }
 
-function collectRequiredSecrets(env: Env, actions: ActionRow[], connectors: ConnectorRow[]) {
-  const secretNames = new Set<string>();
-  for (const action of actions) for (const name of getAuthSecretNames(parseJson<AuthConfig>(action.auth_json, { type: "none" }))) secretNames.add(name);
-  for (const connector of connectors) if (connector.child_worker_token_secret) secretNames.add(connector.child_worker_token_secret);
-  return [...secretNames].sort().map((name) => ({ name, configured: isSecretConfigured(env, name), value: "[hidden]" }));
+async function collectRequiredSecrets(env: Env, actions: ActionRow[], connectors: ConnectorRow[]) {
+  const namesByPlugin = new Map<string, Set<string>>();
+  for (const action of actions) {
+    const names = namesByPlugin.get(action.connector_id) || new Set<string>();
+    for (const name of getAuthSecretNames(parseJson<AuthConfig>(action.auth_json, { type: "none" }))) names.add(name);
+    namesByPlugin.set(action.connector_id, names);
+  }
+  for (const connector of connectors) {
+    if (!connector.child_worker_token_secret) continue;
+    const names = namesByPlugin.get(connector.connector_id) || new Set<string>();
+    names.add(connector.child_worker_token_secret);
+    namesByPlugin.set(connector.connector_id, names);
+  }
+  const output: Array<{ plugin_id: string; name: string; configured: boolean; storage: string; value: string }> = [];
+  for (const connector of connectors) {
+    const managed = env.CREDENTIALS_MASTER_KEY
+      ? await loadCredentialProfile(env, connector.connector_id, "user")
+      : {};
+    for (const name of [...(namesByPlugin.get(connector.connector_id) || [])].sort()) {
+      const managedReady = Boolean(managed[name]?.trim());
+      const legacyReady = isSecretConfigured(env, name);
+      output.push({
+        plugin_id: connector.connector_id,
+        name,
+        configured: managedReady || legacyReady,
+        storage: managedReady ? "encrypted_d1" : legacyReady ? "cloudflare_secret" : "missing",
+        value: "[hidden]",
+      });
+    }
+  }
+  return output;
+}
+
+function parseStoredCredentialFields(value: string): CredentialField[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((field): field is CredentialField => {
+      if (!field || typeof field !== "object" || Array.isArray(field)) return false;
+      const item = field as Partial<CredentialField>;
+      return typeof item.id === "string" && typeof item.label === "string" && ["secret", "text", "url"].includes(String(item.type));
+    });
+  } catch {
+    return [];
+  }
+}
+
+function inferCredentialFields(actions: ActionRow[]): CredentialField[] {
+  const names = new Set<string>();
+  for (const action of actions) {
+    const auth = parseJson<AuthConfig>(action.auth_json, { type: "none" });
+    for (const name of getAuthSecretNames(auth)) names.add(name);
+  }
+  return [...names].sort().map((name) => ({
+    id: name,
+    label: humanizeActionName(name),
+    label_uk: humanizeActionName(name),
+    type: "secret" as const,
+    required: true,
+    help: "Stored encrypted in your OneAIWorkers D1 database.",
+    help_uk: "Зберігається у зашифрованому вигляді у вашій базі D1 OneAIWorkers.",
+  }));
+}
+
+function mergeCredentialFields(primary: CredentialField[], inferred: CredentialField[]): CredentialField[] {
+  const fields = new Map(primary.map((field) => [field.id, field]));
+  for (const field of inferred) if (!fields.has(field.id)) fields.set(field.id, field);
+  return [...fields.values()];
+}
+
+function legacySecretValues(env: Env, fields: CredentialField[]): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const field of fields) {
+    const value = (env as Record<string, unknown>)[field.id];
+    if (typeof value === "string" && value) values[field.id] = value;
+  }
+  return values;
 }
 
 function collectServiceBindings(env: Env, connectors: ConnectorRow[]) {

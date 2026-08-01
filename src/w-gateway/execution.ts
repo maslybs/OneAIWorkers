@@ -6,6 +6,7 @@ import { consumeConfirmationToken, issueConfirmationToken } from "./confirmation
 import { validateJsonSchema } from "./json-schema";
 import { loadPolicy, toolAllowed } from "./policy";
 import { normalizeExecutionResult } from "./results";
+import { ensureWRegistryCurrent } from "./registry";
 import { ensureWGatewaySchema, wDatabase } from "./schema";
 import { loadPublishedTools, loadPublishedToolsByRefs } from "./search";
 import type { WExecutionPlan, WRequestContext, WToolRecord } from "./types";
@@ -31,6 +32,7 @@ export async function wCallLegacyAction(
     confirmation_token?: string;
   },
 ) {
+  await ensureWRegistryCurrent(env);
   const candidates = await loadPublishedTools(env, context, 50_000);
   const tool = candidates.find((candidate) => {
     const plan = safeJson(candidate.execution_plan_json, null) as WExecutionPlan | null;
@@ -65,6 +67,7 @@ export async function wCallLegacyAction(
 
 export async function wCall(env: Env, context: WRequestContext, input: WCallInput) {
   const started = Date.now();
+  await ensureWRegistryCurrent(env);
   await ensureWGatewaySchema(env);
   const tool = await resolveExecutableTool(env, context, input.tool_ref, "execute");
   await validateSearchSession(env, context, input.search_id);
@@ -328,7 +331,8 @@ function compatibilityArguments(
 function toPublicPluginValue(value: unknown): unknown {
   if (typeof value === "string") {
     return value
-      .replace(/connectors?/giu, "plugins")
+      .replace(/connectors/giu, "plugins")
+      .replace(/connector/giu, "plugin")
       .replace(/конектор(ів|и|а|ом|у|і|ами|ах)?/giu, "плагін")
       .replace(/child[_ ]worker/giu, "plugin worker");
   }
@@ -337,7 +341,8 @@ function toPublicPluginValue(value: unknown): unknown {
   const output: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const publicKey = key
-      .replace(/connectors?/giu, "plugins")
+      .replace(/connectors/giu, "plugins")
+      .replace(/connector/giu, "plugin")
       .replace(/child_worker/giu, "plugin_worker");
     output[publicKey] = toPublicPluginValue(child);
   }

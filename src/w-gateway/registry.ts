@@ -10,6 +10,8 @@ import {
   humanizeActionName,
   isDestructiveConnectorAction,
   isReadOnlyConnectorAction,
+  listPluginCredentialStates,
+  migrateLegacyPluginCredentials,
   SYSTEM_ACTIONS,
 } from "../tools/integrations";
 import { NATIVE_TOOLS } from "../tools/native";
@@ -56,6 +58,7 @@ export async function syncWRegistry(
   options: { force?: boolean; embeddings?: boolean; clusters?: boolean } = {},
 ): Promise<{ changed: boolean; revision: number; tools: number; embeddings?: unknown; clusters?: unknown }> {
   await ensureRegistryInfrastructure(env);
+  await migrateLegacyPluginCredentials(env);
   const tools = await collectRegistryTools(env);
   const pluginCount = new Set(tools.map((item) => item.pluginId)).size;
   const semanticEnabled = pluginCount >= semanticPluginThreshold(env);
@@ -68,7 +71,7 @@ export async function syncWRegistry(
     await writeRegistry(env, tools, semanticEnabled);
   }
   if (changed || dirty) {
-    await syncLegacyConnections(env);
+    await syncPluginConnections(env);
   }
   if (changed) {
     await setMetaValue(env, "registry_fingerprint", fingerprint);
@@ -357,23 +360,37 @@ async function writeRegistry(env: Env, tools: RegistryToolInput[], queueEmbeddin
   }
 }
 
-async function syncLegacyConnections(env: Env): Promise<void> {
+async function syncPluginConnections(env: Env): Promise<void> {
   const db = wDatabase(env);
-  await db.prepare("DELETE FROM w_connections WHERE auth_type = 'legacy_vault'").run();
-  const rows = await db.prepare(
-    "SELECT connector_id, profile_id, updated_at FROM connector_credentials ORDER BY connector_id, profile_id",
-  ).all<{ connector_id: string; profile_id: string; updated_at: number }>();
-  for (const row of rows.results || []) {
-    if (row.profile_id !== "user") continue;
-    const id = `conn_${row.connector_id}_user`;
-    const timestamp = new Date(row.updated_at * 1000).toISOString();
+  await db.prepare(
+    "DELETE FROM w_connections WHERE auth_type IN ('legacy_vault', 'managed_vault', 'cloudflare_secret')",
+  ).run();
+  const states = await listPluginCredentialStates(env);
+  for (const state of states) {
+    if (!state.required || !state.ready) continue;
+    const id = `conn_${state.connector_id}_user`;
+    const timestamp = new Date(state.updated_at * 1000).toISOString();
+    const authType = state.storage === "cloudflare_secret" ? "cloudflare_secret" : "managed_vault";
     await db.prepare(
       `INSERT INTO w_connections
          (id, tenant_id, user_id, plugin_id, connection_type, display_name, auth_type,
           encrypted_credentials, granted_scopes_json, status, expires_at, credential_version, created_at, updated_at)
-       VALUES (?, 'default', NULL, ?, ?, ?, 'legacy_vault', '{"source":"legacy_vault"}', '[]', 'active', NULL, 1, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET status = 'active', updated_at = excluded.updated_at`,
-    ).bind(id, row.connector_id, row.connector_id, `${row.connector_id} account`, timestamp, timestamp).run();
+       VALUES (?, 'default', NULL, ?, ?, ?, ?, ?, '[]', 'active', NULL, 1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         auth_type = excluded.auth_type,
+         encrypted_credentials = excluded.encrypted_credentials,
+         status = 'active',
+         updated_at = excluded.updated_at`,
+    ).bind(
+      id,
+      state.connector_id,
+      state.connector_id,
+      `${state.name} account`,
+      authType,
+      JSON.stringify({ source: authType }),
+      timestamp,
+      timestamp,
+    ).run();
   }
 }
 
@@ -434,7 +451,8 @@ function aliasesFor(name: string): string[] {
 
 function userFacingDescription(value: string): string {
   return redactSensitiveText(value
-    .replace(/connectors?/giu, "plugins")
+    .replace(/connectors/giu, "plugins")
+    .replace(/connector/giu, "plugin")
     .replace(/конектор(ів|и|а|ом|у|і|ами|ах)?/giu, "плагін")
     .replace(/child Worker/giu, "plugin Worker"));
 }
@@ -496,8 +514,8 @@ function pluginizeSchemaValue(value: unknown): unknown {
 function requiresConnection(plugin: ConnectorRow, action: ActionRow, installed?: InstalledPackageRow): boolean {
   if (plugin.mode === "child_worker" && installed) {
     try {
-      const fields = JSON.parse(installed.credential_fields_json) as unknown[];
-      if (Array.isArray(fields) && fields.length > 0) return true;
+      const fields = JSON.parse(installed.credential_fields_json) as Array<{ required?: unknown }>;
+      if (Array.isArray(fields) && fields.some((field) => field?.required === true)) return true;
     } catch { return true; }
   }
   try { return (JSON.parse(action.auth_json) as { type?: string }).type !== "none"; } catch { return true; }

@@ -46,28 +46,34 @@ export const authSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-export async function applyConnectorAuth(env: Env, url: URL, headers: Headers, auth: AuthConfig): Promise<void> {
+export async function applyConnectorAuth(
+  env: Env,
+  url: URL,
+  headers: Headers,
+  auth: AuthConfig,
+  credentials: Record<string, string> = {},
+): Promise<void> {
   if (!auth || auth.type === "none") return;
   validateAuth(auth);
 
   switch (auth.type) {
     case "bearer_secret":
-      headers.set("authorization", `Bearer ${getSecret(env, auth.secret_name)}`);
+      headers.set("authorization", `Bearer ${getSecret(env, auth.secret_name, credentials)}`);
       return;
     case "auth_header_secret":
-      headers.set("authorization", `${auth.scheme || "Bearer"} ${getSecret(env, auth.secret_name)}`);
+      headers.set("authorization", `${auth.scheme || "Bearer"} ${getSecret(env, auth.secret_name, credentials)}`);
       return;
     case "api_key_header_secret":
-      headers.set(auth.header_name, getSecret(env, auth.secret_name));
+      headers.set(auth.header_name, getSecret(env, auth.secret_name, credentials));
       return;
     case "api_key_query_secret":
-      url.searchParams.set(auth.query_name, getSecret(env, auth.secret_name));
+      url.searchParams.set(auth.query_name, getSecret(env, auth.secret_name, credentials));
       return;
     case "basic_secret":
-      headers.set("authorization", `Basic ${btoa(`${auth.username || ""}:${getSecret(env, auth.secret_name)}`)}`);
+      headers.set("authorization", `Basic ${btoa(`${auth.username || ""}:${getSecret(env, auth.secret_name, credentials)}`)}`);
       return;
     case "basic_secret_pair":
-      headers.set("authorization", `Basic ${btoa(`${getSecret(env, auth.username_secret_name)}:${getSecret(env, auth.password_secret_name)}`)}`);
+      headers.set("authorization", `Basic ${btoa(`${getSecret(env, auth.username_secret_name, credentials)}:${getSecret(env, auth.password_secret_name, credentials)}`)}`);
       return;
     case "oauth2_client_credentials":
       headers.set("authorization", `${auth.token_type || "Bearer"} ${await fetchOAuthAccessToken(env, {
@@ -79,7 +85,7 @@ export async function applyConnectorAuth(env: Env, url: URL, headers: Headers, a
         audience: auth.audience,
         client_auth_method: auth.client_auth_method || "body",
         access_token_field: auth.access_token_field || "access_token",
-      })}`);
+      }, credentials)}`);
       return;
     case "oauth2_refresh_token":
       headers.set("authorization", `${auth.token_type || "Bearer"} ${await fetchOAuthAccessToken(env, {
@@ -91,7 +97,7 @@ export async function applyConnectorAuth(env: Env, url: URL, headers: Headers, a
         scope: auth.scope,
         client_auth_method: auth.client_auth_method || "body",
         access_token_field: auth.access_token_field || "access_token",
-      })}`);
+      }, credentials)}`);
       return;
     case "google_oauth2_refresh_token":
       headers.set("authorization", `Bearer ${await fetchOAuthAccessToken(env, {
@@ -103,19 +109,19 @@ export async function applyConnectorAuth(env: Env, url: URL, headers: Headers, a
         scope: auth.scope,
         client_auth_method: "body",
         access_token_field: "access_token",
-      })}`);
+      }, credentials)}`);
       return;
   }
 }
 
-export function publicAuth(auth: AuthConfig, env: Env) {
+export function publicAuth(auth: AuthConfig, env: Env, credentials: Record<string, string> = {}) {
   if (!auth || auth.type === "none") return { type: "none" };
   return {
     type: auth.type,
     ...publicAuthDetails(auth),
     secrets: getAuthSecretNames(auth).map((name) => ({
       name,
-      configured: isSecretConfigured(env, name),
+      configured: Boolean(credentials[name]?.trim()) || isSecretConfigured(env, name),
       value: "[hidden]",
     })),
   };
@@ -144,8 +150,10 @@ export function validateSafeHeaders(headers: Record<string, unknown>): void {
   for (const key of Object.keys(headers)) validateHeaderName(key);
 }
 
-export function getSecret(env: Env, name: string): string {
+export function getSecret(env: Env, name: string, credentials: Record<string, string> = {}): string {
   validateSecretName(name);
+  const managedValue = credentials[name];
+  if (typeof managedValue === "string" && managedValue) return managedValue;
   const value = (env as Record<string, unknown>)[name];
   if (typeof value !== "string" || !value) {
     throw new Error(`${biInline("Secret is not configured", "Secret не налаштований")}: ${name}`);
@@ -197,16 +205,20 @@ interface OAuthTokenRequestConfig {
   access_token_field: string;
 }
 
-async function fetchOAuthAccessToken(env: Env, config: OAuthTokenRequestConfig): Promise<string> {
+async function fetchOAuthAccessToken(
+  env: Env,
+  config: OAuthTokenRequestConfig,
+  credentials: Record<string, string>,
+): Promise<string> {
   const tokenUrl = assertSafeOutboundUrl(config.token_url);
   const body = new URLSearchParams();
   body.set("grant_type", config.grant_type);
   if (config.scope) body.set("scope", config.scope);
   if (config.audience) body.set("audience", config.audience);
-  if (config.refresh_token_secret_name) body.set("refresh_token", getSecret(env, config.refresh_token_secret_name));
+  if (config.refresh_token_secret_name) body.set("refresh_token", getSecret(env, config.refresh_token_secret_name, credentials));
 
-  const clientId = config.client_id_secret_name ? getSecret(env, config.client_id_secret_name) : "";
-  const clientSecret = config.client_secret_secret_name ? getSecret(env, config.client_secret_secret_name) : "";
+  const clientId = config.client_id_secret_name ? getSecret(env, config.client_id_secret_name, credentials) : "";
+  const clientSecret = config.client_secret_secret_name ? getSecret(env, config.client_secret_secret_name, credentials) : "";
   const headers = new Headers({ accept: "application/json", "content-type": "application/x-www-form-urlencoded; charset=utf-8" });
   if (config.client_auth_method === "basic" && clientId && clientSecret) headers.set("authorization", `Basic ${btoa(`${clientId}:${clientSecret}`)}`);
   else {
