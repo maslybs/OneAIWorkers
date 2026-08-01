@@ -63,7 +63,9 @@ w_agent_run
 
 Installing or updating a plugin does not change this list, so MCP clients do not keep stale action lists.
 
-1. `w_search` finds allowed actions using D1 full-text search and Workers AI meaning search.
+When a client connects, OneAIWorkers instructs it to start with an empty `w_search`. This replaces the old `hub_info` entry point without restoring a large, unstable tool list. The result includes system capabilities, installed plugins, the current live marketplace, exact installation links, and available plugin updates.
+
+1. `w_search` explains what is available and finds allowed actions. Small catalogs use exact names and D1 text search; meaning search is only added when it is useful.
 2. `w_describe` loads the exact stored schemas only for selected actions.
 3. `w_call` validates and runs one immutable action.
 4. `w_present` is reserved for visual results.
@@ -80,11 +82,11 @@ Ask the MCP client for the service or result you need:
 Find a plugin that can inspect my n8n workflows and failed runs.
 ```
 
-OneAIWorkers searches the marketplace catalog inside your Worker. When a compatible cloud plugin exists, the reply starts with an exact browser installation link.
+OneAIWorkers checks the live marketplace from inside your Worker. When a compatible cloud plugin exists, the reply starts with an exact browser installation link. The client does not need to know a plugin name in advance: it can search by the result the user wants.
 
 1. Open the link in a normal browser.
 2. Approve installation in Cloudflare.
-3. Enter the service address and key only on your own OneAIWorkers settings page.
+3. Enter the service address and key only on your own OneAIWorkers settings page. The page saves the values and verifies the connection before reporting success.
 4. Return to the chat. `w_search` can find the new plugin immediately; reconnecting the MCP client is not required.
 
 The service key is not sent to the marketplace or central installer. It is encrypted with `CREDENTIALS_MASTER_KEY` before D1 storage.

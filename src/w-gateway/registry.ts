@@ -367,7 +367,7 @@ async function syncPluginConnections(env: Env): Promise<void> {
   ).run();
   const states = await listPluginCredentialStates(env);
   for (const state of states) {
-    if (!state.required || !state.ready) continue;
+    if (!state.required || !state.ready || state.verification === "error") continue;
     const id = `conn_${state.connector_id}_user`;
     const timestamp = new Date(state.updated_at * 1000).toISOString();
     const authType = state.storage === "cloudflare_secret" ? "cloudflare_secret" : "managed_vault";

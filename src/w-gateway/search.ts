@@ -1,4 +1,5 @@
 import { randomToken, sha256Base64Url } from "../crypto";
+import { cloudTarget, fetchMarketplaceCatalog } from "../marketplace";
 import { redactSensitiveText } from "../security";
 import { MODEL_PROFILES } from "../tools/ai";
 import type { Env } from "../types";
@@ -113,7 +114,15 @@ async function pluginOverview(
   filters: WSearchInput["filters"],
 ) {
   const tools = (await loadPublishedTools(env, context, 10_000)).filter((tool) => applyRequestFilters(policy, tool, filters || {}));
-  const grouped = new Map<string, { plugin_id: string; name: string; description: string; connected: boolean; tools: number; kinds: Set<string> }>();
+  const grouped = new Map<string, {
+    plugin_id: string;
+    name: string;
+    description: string;
+    connected: boolean;
+    tools: number;
+    kinds: Set<string>;
+    capabilities: Map<string, { capability_id: string; title: string; summary: string; tools: number }>;
+  }>();
   for (const tool of tools) {
     const item = grouped.get(tool.plugin_id) || {
       plugin_id: tool.plugin_id,
@@ -122,10 +131,19 @@ async function pluginOverview(
       connected: !tool.connection_type || Boolean(tool.connected),
       tools: 0,
       kinds: new Set<string>(),
+      capabilities: new Map(),
     };
     item.tools += 1;
     item.connected ||= !tool.connection_type || Boolean(tool.connected);
     item.kinds.add(tool.capability_kind);
+    const capability = item.capabilities.get(tool.capability_key) || {
+      capability_id: tool.capability_key,
+      title: tool.capability_title,
+      summary: tool.capability_description,
+      tools: 0,
+    };
+    capability.tools += 1;
+    item.capabilities.set(tool.capability_key, capability);
     grouped.set(tool.plugin_id, item);
   }
   const results = [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name)).slice(0, limit).map((item) => ({
@@ -135,7 +153,9 @@ async function pluginOverview(
     connected: item.connected,
     callable_tools: item.tools,
     kinds: [...item.kinds].sort(),
+    capabilities: [...item.capabilities.values()].sort((left, right) => left.title.localeCompare(right.title)),
   }));
+  const marketplace = await marketplaceOverview(env, context, grouped);
   const searchId = `ws_${randomToken(18)}`;
   const now = new Date();
   await wDatabase(env).prepare(
@@ -144,7 +164,88 @@ async function pluginOverview(
      VALUES (?, ?, ?, ?, ?, '[]', ?, ?)`,
   ).bind(searchId, context.tenantId, context.userId, context.endpointId, revision,
     now.toISOString(), new Date(now.getTime() + SEARCH_TTL_MS).toISOString()).run();
-  return { search_id: searchId, catalog_revision: revision, plugins: results, expires_at: new Date(now.getTime() + SEARCH_TTL_MS).toISOString() };
+  return {
+    search_id: searchId,
+    catalog_revision: revision,
+    system: results.find((item) => item.plugin_id === "oneaiworkers") || null,
+    installed_plugins: results.filter((item) => item.plugin_id !== "oneaiworkers"),
+    plugins: results,
+    marketplace,
+    available_actions: {
+      install_plugins: marketplace.reachable,
+      update_plugins: marketplace.reachable,
+      change_plugin_settings: true,
+      verify_plugin_connections: true,
+      instruction: "Use the exact marketplace install_url to install. For an installed plugin, search for its settings or update operation with w_search. / Для встановлення використайте точний install_url з ринку. Для встановленого плагіна знайдіть його дію налаштування або оновлення через w_search.",
+    },
+    guidance: marketplace.reachable
+      ? "The list below comes from the live marketplace. Offer these exact plugins and installation links; do not invent unavailable plugins. Service keys are entered only on the protected OneAIWorkers page. / Список нижче отримано з живого ринку. Пропонуйте лише ці точні плагіни та посилання встановлення; не вигадуйте недоступні плагіни. Ключі сервісів вводяться лише на захищеній сторінці OneAIWorkers."
+      : "The marketplace could not be reached. Do not claim that a plugin is available until a later live check succeeds. / Не вдалося зв’язатися з ринком. Не стверджуйте, що плагін доступний, доки наступна жива перевірка не буде успішною.",
+    expires_at: new Date(now.getTime() + SEARCH_TTL_MS).toISOString(),
+  };
+}
+
+async function marketplaceOverview(
+  env: Env,
+  context: WRequestContext,
+  installedPlugins: Map<string, unknown>,
+) {
+  try {
+    const [items, installedRows] = await Promise.all([
+      fetchMarketplaceCatalog(env),
+      wDatabase(env).prepare("SELECT connector_id, package_id, installed_version FROM connector_packages ORDER BY package_id")
+        .all<{ connector_id: string; package_id: string; installed_version: string }>(),
+    ]);
+    const installedPackages = new Map((installedRows.results || []).map((row) => [row.package_id, row]));
+    const plugins = items.flatMap((item) => {
+      const target = cloudTarget(item);
+      if (!target) return [];
+      const installedPackage = installedPackages.get(item.id);
+      const installedId = installedPackage?.connector_id || (installedPlugins.has(item.id) ? item.id : null);
+      const updateAvailable = Boolean(installedPackage && compareSimpleVersions(target.version, installedPackage.installed_version) > 0);
+      return [{
+        plugin_id: item.id,
+        name: item.name,
+        name_uk: item.locales?.uk?.name || item.name,
+        summary: item.description,
+        summary_uk: item.locales?.uk?.description || item.description,
+        version: target.version,
+        installed: Boolean(installedId),
+        installed_plugin_id: installedId,
+        installed_version: installedPackage?.installed_version || null,
+        update_available: updateAvailable,
+        update_url: updateAvailable && installedId
+          ? `${context.baseUrl}/plugins/${encodeURIComponent(installedId)}/update`
+          : null,
+        capabilities: (item.capabilities || []).slice(0, 8),
+        install_url: `${context.baseUrl}/plugins/install/${encodeURIComponent(item.id)}?lang=en`,
+        install_url_uk: `${context.baseUrl}/plugins/install/${encodeURIComponent(item.id)}?lang=uk`,
+      }];
+    });
+    return {
+      reachable: true,
+      source: "live_marketplace",
+      available_plugins: plugins.length,
+      plugins,
+    };
+  } catch (error) {
+    return {
+      reachable: false,
+      source: "live_marketplace",
+      available_plugins: 0,
+      plugins: [],
+      error: redactSensitiveText(error instanceof Error ? error.message : "Marketplace is unavailable."),
+    };
+  }
+}
+
+function compareSimpleVersions(left: string, right: string): number {
+  const a = left.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const b = right.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    if ((a[index] || 0) !== (b[index] || 0)) return (a[index] || 0) - (b[index] || 0);
+  }
+  return 0;
 }
 
 export async function loadPublishedTools(env: Env, context: WRequestContext, limit: number): Promise<WToolRecord[]> {

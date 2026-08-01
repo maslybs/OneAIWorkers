@@ -116,6 +116,24 @@ export async function wCall(env: Env, context: WRequestContext, input: WCallInpu
     const httpStatus = extractHttpStatus(rawResult);
     const safeResult = redactSensitiveValue(toPublicPluginValue(rawResult));
     const normalized = await normalizeExecutionResult(env, context, safeResult);
+    if (pluginInvocationFailed(rawResult, httpStatus)) {
+      const response = {
+        ok: false,
+        execution_id: executionId,
+        tool_ref: tool.tool_ref,
+        duration_ms: Date.now() - started,
+        error: {
+          code: httpStatus === 401 || httpStatus === 403 ? "plugin_authentication_failed" : "plugin_request_failed",
+          message: httpStatus === 401 || httpStatus === 403
+            ? "The service rejected the saved plugin credentials. Open the protected plugin settings page and save a valid key."
+            : "The plugin request failed.",
+          http_status: httpStatus,
+          details: normalized,
+        },
+      };
+      await auditExecution(env, context, tool, executionId, connectionId, argumentsHash, "failed", Date.now() - started, httpStatus, response.error.code, confirmationUsed, keyHash);
+      return response;
+    }
     const response = {
       ok: true,
       execution_id: executionId,
@@ -245,24 +263,44 @@ async function auditExecution(
     confirmationUsed ? 1 : 0, idempotencyHash, new Date().toISOString()).run();
 }
 
-function extractHttpStatus(value: unknown, depth = 0): number | null {
-  if (!value || typeof value !== "object" || depth > 3) return null;
-  if (Array.isArray(value)) {
-    for (const item of value.slice(0, 5)) {
-      const nested = extractHttpStatus(item, depth + 1);
-      if (nested !== null) return nested;
+function extractHttpStatus(value: unknown): number | null {
+  const statuses: number[] = [];
+  const visit = (item: unknown, depth: number) => {
+    if (!item || typeof item !== "object" || depth > 6) return;
+    if (Array.isArray(item)) {
+      for (const child of item.slice(0, 20)) visit(child, depth + 1);
+      return;
     }
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  if (Number.isInteger(record.status) && Number(record.status) >= 100 && Number(record.status) <= 599) {
-    return Number(record.status);
-  }
-  for (const key of ["response", "result", "data"]) {
-    const nested = extractHttpStatus(record[key], depth + 1);
-    if (nested !== null) return nested;
-  }
-  return null;
+    for (const [key, child] of Object.entries(item as Record<string, unknown>).slice(0, 50)) {
+      if ((key === "status" || key === "http_status") && Number.isInteger(child) && Number(child) >= 100 && Number(child) <= 599) {
+        statuses.push(Number(child));
+      }
+      visit(child, depth + 1);
+    }
+  };
+  visit(value, 0);
+  return statuses.find((status) => status >= 400) || statuses[0] || null;
+}
+
+function pluginInvocationFailed(value: unknown, httpStatus: number | null): boolean {
+  if (httpStatus && httpStatus >= 400) return true;
+  let failed = false;
+  const visit = (item: unknown, depth: number) => {
+    if (failed || !item || typeof item !== "object" || depth > 6) return;
+    if (Array.isArray(item)) {
+      for (const child of item.slice(0, 20)) visit(child, depth + 1);
+      return;
+    }
+    for (const [key, child] of Object.entries(item as Record<string, unknown>).slice(0, 50)) {
+      if (key === "ok" && child === false) {
+        failed = true;
+        return;
+      }
+      visit(child, depth + 1);
+    }
+  };
+  visit(value, 0);
+  return failed;
 }
 
 function canonicalJson(value: unknown): string {

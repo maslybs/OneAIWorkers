@@ -4,7 +4,9 @@ import {
   createConnectorAccessToken,
   credentialsReady,
   ensureCredentialSchema,
+  getPluginConnectionHealth,
   loadCredentialProfile,
+  setPluginConnectionHealth,
   storeCredentialProfile,
   type CredentialField,
 } from "../vault";
@@ -14,12 +16,14 @@ import {
   connectorSettingsLinkSchema,
   connectorUpdatesSchema,
   ensureMarketplaceSchema,
+  fetchMarketplaceCatalog,
   findCapability,
   findCapabilitySchema,
   getInstalledPackage,
   listConnectorUpdates,
 } from "../marketplace";
 import { biInline } from "../i18n";
+import { errorMessage } from "../response";
 import { assertSafeOutboundUrl, redactSensitiveText, redactSensitiveValue, redactUrlForOutput, safeKey } from "../security";
 import type { Env } from "../types";
 import { applyConnectorAuth, authSchema, getAuthSecretNames, getSecret, isSecretConfigured, publicAuth, redactHeaders, validateAuth, validateSafeHeaders, validateSecretName } from "./connectors/auth";
@@ -153,6 +157,10 @@ export interface PluginCredentialState extends PluginCredentialDefinition {
   required: boolean;
   ready: boolean;
   storage: "encrypted_d1" | "cloudflare_secret" | "none" | "incomplete";
+  verification: "not_required" | "not_checked" | "active" | "error";
+  last_checked_at: number | null;
+  last_http_status: number | null;
+  last_error: string | null;
   updated_at: number;
 }
 
@@ -253,13 +261,25 @@ export async function ensureConnectorSchema(env: Env): Promise<void> {
 }
 
 export async function connectorSetupStatus(env: Env, args: z.infer<z.ZodObject<typeof connectorSetupStatusSchema>>) {
+  let marketplaceLive: { reachable: boolean; plugins: number; items: Array<{ plugin_id: string; version: string }>; error?: string };
+  try {
+    const marketplaceItems = await fetchMarketplaceCatalog(env);
+    marketplaceLive = {
+      reachable: true,
+      plugins: marketplaceItems.length,
+      items: marketplaceItems.map((item) => ({ plugin_id: item.id, version: item.version })),
+    };
+  } catch (error) {
+    marketplaceLive = { reachable: false, plugins: 0, items: [], error: errorMessage(error) };
+  }
   const base = {
     d1_database: Boolean(env.OAUTH_DB),
     mcp_shared_secret: Boolean(env.MCP_SHARED_SECRET),
     workers_ai: Boolean(env.AI),
     agent_manager: Boolean(env.AGENT_MANAGER),
     encrypted_credentials: Boolean(env.CREDENTIALS_MASTER_KEY),
-    marketplace: Boolean(env.MARKETPLACE_CATALOG_URL || env.PLUGIN_INSTALLER_URL),
+    marketplace: true,
+    marketplace_live: marketplaceLive,
     worker_builder: Boolean(env.CF_ACCOUNT_ID && env.CF_API_TOKEN),
     notifications: {
       telegram: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
@@ -292,6 +312,10 @@ export async function connectorSetupStatus(env: Env, args: z.infer<z.ZodObject<t
       required: state.required,
       ready: state.ready,
       storage: state.storage,
+      verification: state.verification,
+      last_checked_at: state.last_checked_at,
+      last_http_status: state.last_http_status,
+      last_error: state.last_error,
     })),
     required_secrets: requiredSecrets,
     missing_secrets: requiredSecrets.filter((item) => !item.configured).map((item) => `${item.plugin_id}:${item.name}`),
@@ -385,6 +409,10 @@ export async function listConnectors(env: Env, args: z.infer<z.ZodObject<typeof 
       required: credentialState.required,
       configured: credentialState.ready,
       storage: credentialState.storage,
+      verification: credentialState.verification,
+      last_checked_at: credentialState.last_checked_at,
+      last_http_status: credentialState.last_http_status,
+      last_error: credentialState.last_error,
     };
     if (installedPackage) {
       const fields = parseJson<Array<{ id?: unknown; required?: unknown }>>(installedPackage.credential_fields_json, []);
@@ -458,11 +486,16 @@ export async function getPluginCredentialState(env: Env, connectorId: string): P
   const connector = await getDb(env).prepare(
     "SELECT updated_at FROM connectors WHERE connector_id = ?",
   ).bind(definition.connector_id).first<{ updated_at: number }>();
+  const health = required ? await getPluginConnectionHealth(env, definition.connector_id) : null;
   return {
     ...definition,
     required,
     ready,
     storage: !required ? "none" : managedReady ? "encrypted_d1" : legacyReady ? "cloudflare_secret" : "incomplete",
+    verification: !required ? "not_required" : health?.status || "not_checked",
+    last_checked_at: health?.checked_at || null,
+    last_http_status: health?.http_status ?? null,
+    last_error: health?.status === "error" ? health.message : null,
     updated_at: connector?.updated_at || nowSeconds(),
   };
 }
@@ -492,6 +525,55 @@ export async function migrateLegacyPluginCredentials(env: Env): Promise<{ migrat
     migrated.push(state.connector_id);
   }
   return { migrated };
+}
+
+export async function verifyPluginConnection(env: Env, connectorId: string) {
+  const normalized = normalizeKey(connectorId);
+  const state = await getPluginCredentialState(env, normalized);
+  if (state.required && !state.ready) {
+    return {
+      ok: false,
+      plugin_id: normalized,
+      verification: "missing_credentials",
+      message: biInline("Required settings are missing.", "Немає обов’язкових налаштувань."),
+    };
+  }
+
+  const db = getDb(env);
+  const actions = await db.prepare(
+    "SELECT * FROM connector_actions WHERE connector_id = ? ORDER BY action_name",
+  ).bind(normalized).all<ActionRow>();
+  const action = chooseConnectionCheckAction(actions.results || []);
+  if (!action) {
+    return {
+      ok: true,
+      plugin_id: normalized,
+      verification: "not_available",
+      message: biInline(
+        "Settings were saved, but this plugin does not provide a safe connection check.",
+        "Налаштування збережено, але цей плагін не має безпечної перевірки зв’язку.",
+      ),
+    };
+  }
+
+  const result = await callConnectorTool(env, {
+    connector_id: normalized,
+    action_name: action.action_name,
+    input: {},
+    dry_run: false,
+    confirmed: true,
+  });
+  const outcome = await recordPluginConnectionResult(env, normalized, result, true);
+  return {
+    ok: outcome.ok,
+    plugin_id: normalized,
+    verification: outcome.ok ? "active" : "error",
+    action_name: action.action_name,
+    http_status: outcome.httpStatus,
+    message: outcome.ok
+      ? biInline("Connection verified.", "Зв’язок перевірено.")
+      : outcome.message,
+  };
 }
 
 function systemConnectorView(env: Env, includeActions: boolean): JsonObject {
@@ -735,6 +817,7 @@ export async function deletePlugins(env: Env, args: z.infer<z.ZodObject<typeof d
     statements.push(db.prepare("DELETE FROM connector_packages WHERE connector_id = ?").bind(pluginId));
     statements.push(db.prepare("DELETE FROM connector_credentials WHERE connector_id = ?").bind(pluginId));
     statements.push(db.prepare("DELETE FROM connector_access_tokens WHERE connector_id = ?").bind(pluginId));
+    statements.push(db.prepare("DELETE FROM plugin_connection_health WHERE connector_id = ?").bind(pluginId));
     statements.push(db.prepare(
       "INSERT INTO connector_audit_log (id, connector_id, action_name, event, ok, message, created_at) VALUES (?, ?, NULL, 'delete_plugin', 1, 'Deleted plugin and stored settings', ?)",
     ).bind(crypto.randomUUID(), pluginId, nowSeconds()));
@@ -838,13 +921,13 @@ export async function callConnectorTool(
   }
 
   if (connector.mode === "child_worker") {
-    return withLiveGatewayMetadata(
-      await callChildWorkerConnector(env, connector, action.action_name, args.input || {}, dryRun),
-      env,
-    );
+    const childResult = await callChildWorkerConnector(env, connector, action.action_name, args.input || {}, dryRun);
+    if (!dryRun) await recordPluginConnectionResult(env, connectorId, childResult);
+    return withLiveGatewayMetadata(childResult, env);
   }
 
   const result = await callInternalAction(env, action, args.input || {}, dryRun);
+  if (!dryRun) await recordPluginConnectionResult(env, connectorId, result);
   await audit(db, connectorId, actionName, args.dry_run ? "dry_run_action" : "call_action", true, `${action.method} ${action.url}`);
   return withLiveGatewayMetadata(result, env);
 }
@@ -1194,6 +1277,98 @@ export function isDestructiveConnectorAction(row: ActionRow): boolean {
   const name = row.action_name.toLowerCase();
   if (["DELETE"].includes(row.method.toUpperCase())) return true;
   return /^(delete|remove|destroy|cancel|disable|revoke|drop|purge|wipe)/.test(name);
+}
+
+function chooseConnectionCheckAction(actions: ActionRow[]): ActionRow | null {
+  const safe = actions.filter((action) => isReadOnlyConnectorAction(action) && actionAcceptsEmptyInput(action));
+  const preferred = [
+    "check_connection",
+    "connection_check",
+    "health",
+    "health_check",
+    "whoami",
+    "get_me",
+    "list_workflows",
+    "list_boards",
+  ];
+  for (const name of preferred) {
+    const match = safe.find((action) => action.action_name === name);
+    if (match) return match;
+  }
+  return safe[0] || null;
+}
+
+function actionAcceptsEmptyInput(action: ActionRow): boolean {
+  const schema = parseJson<{ required?: unknown }>(action.input_schema_json || "{}", {});
+  return !Array.isArray(schema.required) || schema.required.length === 0;
+}
+
+function connectionOutcome(value: unknown): { ok: boolean; httpStatus: number | null; message: string } {
+  const statuses: number[] = [];
+  const messages: string[] = [];
+  let explicitFailure = false;
+  const visit = (item: unknown, depth: number) => {
+    if (depth > 6 || item === null || item === undefined) return;
+    if (Array.isArray(item)) {
+      for (const child of item.slice(0, 20)) visit(child, depth + 1);
+      return;
+    }
+    if (typeof item !== "object") return;
+    for (const [key, child] of Object.entries(item as Record<string, unknown>).slice(0, 50)) {
+      if ((key === "status" || key === "http_status") && typeof child === "number") statuses.push(child);
+      if (key === "ok" && child === false) explicitFailure = true;
+      if (["message", "error", "text_preview"].includes(key) && typeof child === "string" && child.trim()) {
+        messages.push(redactSensitiveText(child).slice(0, 500));
+      }
+      visit(child, depth + 1);
+    }
+  };
+  visit(value, 0);
+  const httpStatus = statuses.find((status) => status >= 400) || statuses[0] || null;
+  const ok = !explicitFailure && (!httpStatus || httpStatus < 400);
+  const defaultMessage = httpStatus === 401 || httpStatus === 403
+    ? biInline(
+        "The service rejected the saved key. Open plugin settings and save a valid key.",
+        "Сервіс відхилив збережений ключ. Відкрийте налаштування плагіна та збережіть правильний ключ.",
+      )
+    : biInline("Connection check failed.", "Не вдалося перевірити зв’язок.");
+  return { ok, httpStatus, message: messages[0] || defaultMessage };
+}
+
+async function recordPluginConnectionResult(
+  env: Env,
+  connectorId: string,
+  value: unknown,
+  verification = false,
+): Promise<{ ok: boolean; httpStatus: number | null; message: string }> {
+  const outcome = connectionOutcome(value);
+  const previous = await getPluginConnectionHealth(env, connectorId);
+  if (outcome.ok) {
+    await setPluginConnectionHealth(env, connectorId, { status: "active", httpStatus: outcome.httpStatus });
+    if (previous?.status !== "active") await markRegistryDirty(env);
+    return outcome;
+  }
+  if (verification || outcome.httpStatus === 401 || outcome.httpStatus === 403) {
+    await setPluginConnectionHealth(env, connectorId, {
+      status: "error",
+      httpStatus: outcome.httpStatus,
+      message: outcome.message,
+    });
+    if (previous?.status !== "error") await markRegistryDirty(env);
+  }
+  return outcome;
+}
+
+async function markRegistryDirty(env: Env): Promise<void> {
+  if (!env.OAUTH_DB) return;
+  try {
+    await env.OAUTH_DB.prepare(
+      `INSERT INTO w_meta (key, value, updated_at) VALUES ('registry_dirty', '1', ?)
+       ON CONFLICT(key) DO UPDATE SET value = '1', updated_at = excluded.updated_at`,
+    ).bind(new Date().toISOString()).run();
+  } catch {
+    // The W registry may not be initialized yet. Saving credentials still marks it dirty through its D1 trigger.
+  }
 }
 
 function getDb(env: Env): D1Database {

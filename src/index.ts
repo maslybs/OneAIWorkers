@@ -39,7 +39,7 @@ import {
 } from "./vault";
 import { registerInstalledConnector } from "./connector-installation";
 import { getInstalledPackage, getMarketplaceItem } from "./marketplace";
-import { getPluginCredentialDefinition } from "./tools/integrations";
+import { getPluginCredentialDefinition, verifyPluginConnection } from "./tools/integrations";
 import { approveConfirmation, createWAdminServer, openConfirmationApproval } from "./w-gateway";
 
 export { AgentManager } from "./agents";
@@ -193,6 +193,13 @@ export default {
             const form = await request.formData();
             const values = sanitizeSubmittedCredentials(form, fields, existing);
             await storeCredentialProfile(env, connectorId, "user", values);
+            const verification = await verifyPluginConnection(env, connectorId);
+            if (!verification.ok) {
+              return new Response(connectorSetupPageHtml(connectorName, fields, values, language, verification.message), {
+                status: 400,
+                headers: connectorPageHeaders(),
+              });
+            }
             return new Response(connectorSetupPageHtml(connectorName, fields, values, language, undefined, true), {
               headers: connectorPageHeaders(),
             });

@@ -6,9 +6,9 @@ OneAIWorkers exposes the same six commands to ChatGPT, Claude, and every other s
 
 ## `w_search`
 
-Finds allowed actions in installed plugins and approved executable skills. It combines exact matching, D1 full-text search, and Workers AI meaning search. The result is compact and does not contain full schemas.
+Finds allowed actions in installed plugins and approved executable skills. Exact and D1 text search handle small catalogs; Workers AI meaning search is added only when the visible catalog is large and simpler search is not confident. The result is compact and does not contain full schemas.
 
-Use an empty query to get a short overview. When a needed plugin is not installed, the result may include the exact browser link to the marketplace flow.
+Use an empty query to get the system summary, installed plugins, the current live marketplace, exact installation links, and available updates. When an ordinary search has no installed result, OneAIWorkers also checks the live marketplace.
 
 ## `w_describe`
 

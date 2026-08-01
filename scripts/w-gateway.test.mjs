@@ -79,15 +79,18 @@ test("every W Gateway response reports an available OneAIWorkers update", async 
   const originalFetch = globalThis.fetch;
   let manifestRequests = 0;
   env.UPDATE_CHECK_ENABLED = "true";
-  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.1.1.json";
-  globalThis.fetch = async () => {
-    manifestRequests += 1;
-    return Response.json({
-      schema_version: 1,
-      latest_version: "1.1.1",
-      critical: false,
-      message: { en: "New update.", uk: "Доступне нове оновлення." },
-    });
+  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.2.1.json";
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("updates.example.com")) {
+      manifestRequests += 1;
+      return Response.json({
+        schema_version: 1,
+        latest_version: "1.2.1",
+        critical: false,
+        message: { en: "New update.", uk: "Доступне нове оновлення." },
+      });
+    }
+    return Response.json({ items: [] });
   };
   try {
     const server = await gateway.createWGatewayServer(env, request);
@@ -131,6 +134,45 @@ test("registry normalizes installed actions into immutable plugin tool reference
   assert.equal(pluginKind.kind, "plugin");
 });
 
+test("an empty search explains the live marketplace on a clean client", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    items: [{
+      id: "n8n",
+      type: "connector",
+      name: "n8n for OneAIWorkers",
+      description: "Manage n8n workflows.",
+      version: "0.4.0",
+      capabilities: ["list workflows", "inspect executions"],
+      locales: { uk: { name: "n8n", description: "Робота з процесами n8n." } },
+      targets: [{
+        id: "cloudflare-worker",
+        runtime: "cloudflare-worker",
+        version: "0.4.0",
+        package_url: "https://marketplace.example/n8n/package",
+        package_format: "oneaiworkers.connector.v1",
+        checksum: "sha256:marketplace-test-checksum",
+      }],
+    }],
+  });
+  try {
+    const overview = await gateway.wSearch(env, context, {
+      query: "",
+      filters: { connected_only: true, target: "oneaiworkers-cloudflare" },
+    });
+    assert.equal(overview.marketplace.reachable, true);
+    assert.equal(overview.marketplace.available_plugins, 1);
+    assert.equal(overview.marketplace.plugins[0].plugin_id, "n8n");
+    assert.match(overview.marketplace.plugins[0].install_url, /\/plugins\/install\/n8n\?lang=en/u);
+    assert.match(overview.marketplace.plugins[0].install_url_uk, /\/plugins\/install\/n8n\?lang=uk/u);
+    assert.ok(overview.system);
+    assert.ok(Array.isArray(overview.installed_plugins));
+    assert.equal(overview.available_actions.install_plugins, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("an existing internal n8n plugin migrates its Cloudflare key and stays connected through encrypted D1", async () => {
   env.CREDENTIALS_MASTER_KEY = "x".repeat(48);
   env.N8N_PSY_API_KEY = `test_${"n".repeat(40)}`;
@@ -165,6 +207,26 @@ test("an existing internal n8n plugin migrates its Cloudflare key and stays conn
     const called = await gateway.wCall(env, context, { tool_ref: tool.tool_ref, arguments: {} });
     assert.equal(called.ok, true, JSON.stringify(called));
     assert.equal(receivedKey, expectedApiKey);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  globalThis.fetch = async () => Response.json({ message: "unauthorized" }, { status: 401 });
+  try {
+    const failed = await gateway.wCall(env, context, { tool_ref: tool.tool_ref, arguments: {} });
+    assert.equal(failed.ok, false, JSON.stringify(failed));
+    assert.equal(failed.error.code, "plugin_authentication_failed");
+    assert.equal(failed.error.http_status, 401);
+    const health = await d1.prepare(
+      "SELECT status, http_status FROM plugin_connection_health WHERE connector_id = 'n8n-psy'",
+    ).first();
+    assert.equal(health.status, "error");
+    assert.equal(health.http_status, 401);
+    await gateway.syncWRegistry(env, { embeddings: false });
+    const invalidConnection = await d1.prepare(
+      "SELECT id FROM w_connections WHERE plugin_id = 'n8n-psy' AND status = 'active'",
+    ).first();
+    assert.equal(invalidConnection, null);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { randomToken, sha256Base64Url } from "../crypto";
 import { bi } from "../i18n";
+import { findCapability } from "../marketplace";
 import { errorMessage, mcpText } from "../response";
 import { redactSensitiveText, redactSensitiveValue, safeKey } from "../security";
 import type { Env } from "../types";
@@ -38,9 +39,24 @@ export async function createWGatewayServer(
   exposureMode: ExposureMode = "meta",
 ): Promise<McpServer> {
   const context = await createWRequestContext(request, env, exposureMode);
-  const server = new McpServer({ name: env.HUB_NAME || "OneAIWorkers", version: APP_VERSION });
+  const server = new McpServer(
+    { name: env.HUB_NAME || "OneAIWorkers", version: APP_VERSION },
+    { instructions: gatewayInstructions() },
+  );
   registerWGatewayTools(server, env, context);
   return server;
+}
+
+function gatewayInstructions(): string {
+  return [
+    "OneAIWorkers is a private plugin gateway with a live marketplace.",
+    "At the start of a conversation, and whenever the user asks what is available, what can be installed, or whether updates exist, call w_search with an empty query.",
+    "That overview contains the system capabilities, installed user plugins, the current live marketplace, exact installation links, and plugin update links.",
+    "For a task, call w_search with the user's goal. If it returns an installed plugin that needs setup, obtain its protected settings link. If it returns a marketplace match, put the exact install_url first and tell the user to open it in a normal browser.",
+    "Never invent plugins, never rely on an old catalog remembered by the client, and never ask the user to paste service keys into chat. Keys are entered only on the protected page of the user's own OneAIWorkers.",
+    "After choosing an operation, call w_describe for the exact tool_ref, then w_call. Do not guess schemas or versioned references.",
+    "Українською: на початку розмови та на питання про можливості, встановлення або оновлення спочатку викличте w_search з порожнім запитом. Він повертає встановлені плагіни, живий ринок і точні посилання. Не вигадуйте плагіни й не просіть ключі в чаті.",
+  ].join("\n");
 }
 
 export function registerWGatewayTools(server: McpServer, env: Env, context: WRequestContext): void {
@@ -50,8 +66,8 @@ export function registerWGatewayTools(server: McpServer, env: Env, context: WReq
     "w_search",
     "Search available plugins",
     bi(
-      "Finds the best available plugin operations without loading their full schemas. An empty query returns a compact plugin overview.",
-      "Знаходить найкращі доступні дії плагінів без завантаження повних схем. Порожній запит повертає стислий огляд плагінів.",
+      "Finds the best available plugin operations without loading their full schemas. An empty query returns installed plugins plus the current live marketplace with exact installation links.",
+      "Знаходить найкращі доступні дії плагінів без завантаження повних схем. Порожній запит повертає встановлені плагіни та поточний живий ринок із точними посиланнями встановлення.",
     ),
     {
       query: z.string().max(2_000).default(""),
@@ -161,7 +177,50 @@ async function searchCurrentRegistry(
   input: Parameters<typeof wSearch>[2],
 ) {
   await ensureWRegistryCurrent(env);
-  return wSearch(env, context, input);
+  const local = await wSearch(env, context, input);
+  const query = String(input.query || "").trim();
+  if (!query || localSearchHasPluginResults(local)) return local;
+
+  const installed = await wSearch(env, context, {
+    ...input,
+    filters: { ...(input.filters || {}), connected_only: false },
+  });
+  if (localSearchHasPluginResults(installed)) {
+    return {
+      ...local,
+      installed_matches_needing_setup: (installed as { results?: unknown[] }).results || [],
+      next_step: "The plugin is installed but is not ready. Use OneAIWorkers get_plugin_settings_link for its plugin_id, then ask the user to open the returned link in a normal browser. / Плагін встановлено, але він ще не готовий. Викличте get_plugin_settings_link OneAIWorkers для його plugin_id, а потім попросіть користувача відкрити отримане посилання у звичайному браузері.",
+    };
+  }
+
+  try {
+    const marketplace = await findCapability(env, context.baseUrl, {
+      query,
+      limit: Math.min(input.limit || 5, 5),
+      language: /[а-яіїєґ]/iu.test(query) ? "uk" : "en",
+    });
+    return {
+      ...local,
+      marketplace,
+      browser_action: marketplace.browser_action,
+    };
+  } catch (error) {
+    return {
+      ...local,
+      marketplace: {
+        ok: false,
+        available: false,
+        error: error instanceof Error ? error.message : "Marketplace is unavailable.",
+      },
+    };
+  }
+}
+
+function localSearchHasPluginResults(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const result = value as { results?: Array<{ plugin_id?: unknown }>; plugins?: Array<{ plugin_id?: unknown }> };
+  return [...(result.results || []), ...(result.plugins || [])]
+    .some((item) => item?.plugin_id !== "oneaiworkers");
 }
 
 export async function createWAdminServer(env: Env, request: Request): Promise<McpServer> {

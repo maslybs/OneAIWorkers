@@ -123,7 +123,7 @@ export function connectorSetupPageHtml(
         body: saved
           ? "Return to ChatGPT, Claude, or another MCP client. The plugin is now available through OneAIWorkers."
           : "These values are sent only to your Worker and stored encrypted in D1.",
-        save: "Save and continue",
+        save: "Save and verify",
         secretSaved: "A value is already saved. Leave this empty to keep it.",
         next: "In your chat, ask to find the installed plugin or continue with the task you wanted to complete.",
       };

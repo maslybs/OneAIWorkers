@@ -32,6 +32,14 @@ interface AccessRow {
   used_at: number | null;
 }
 
+export interface PluginConnectionHealth {
+  connector_id: string;
+  status: "active" | "error";
+  http_status: number | null;
+  message: string | null;
+  checked_at: number;
+}
+
 export async function ensureCredentialSchema(env: Env): Promise<void> {
   const db = getDb(env);
   for (const sql of [
@@ -51,6 +59,13 @@ export async function ensureCredentialSchema(env: Env): Promise<void> {
       expires_at INTEGER NOT NULL,
       used_at INTEGER,
       created_at INTEGER NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS plugin_connection_health (
+      connector_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      http_status INTEGER,
+      message TEXT,
+      checked_at INTEGER NOT NULL
     )`,
     "CREATE INDEX IF NOT EXISTS idx_connector_access_expiry ON connector_access_tokens(expires_at)",
   ]) {
@@ -79,6 +94,9 @@ export async function storeCredentialProfile(
        encryption_version = excluded.encryption_version,
        updated_at = excluded.updated_at`,
   ).bind(connectorId, profileId, encrypted.ciphertext, encrypted.iv, encrypted.version, now).run();
+  if (profileId === "user") {
+    await db.prepare("DELETE FROM plugin_connection_health WHERE connector_id = ?").bind(connectorId).run();
+  }
 }
 
 export async function loadCredentialProfile(
@@ -115,7 +133,34 @@ export async function deleteConnectorCredentials(env: Env, connectorId: string):
   await env.OAUTH_DB.batch([
     env.OAUTH_DB.prepare("DELETE FROM connector_credentials WHERE connector_id = ?").bind(connectorId),
     env.OAUTH_DB.prepare("DELETE FROM connector_access_tokens WHERE connector_id = ?").bind(connectorId),
+    env.OAUTH_DB.prepare("DELETE FROM plugin_connection_health WHERE connector_id = ?").bind(connectorId),
   ]);
+}
+
+export async function getPluginConnectionHealth(env: Env, connectorId: string): Promise<PluginConnectionHealth | null> {
+  if (!env.OAUTH_DB) return null;
+  await ensureCredentialSchema(env);
+  return env.OAUTH_DB.prepare(
+    "SELECT connector_id, status, http_status, message, checked_at FROM plugin_connection_health WHERE connector_id = ?",
+  ).bind(connectorId).first<PluginConnectionHealth>();
+}
+
+export async function setPluginConnectionHealth(
+  env: Env,
+  connectorId: string,
+  input: { status: "active" | "error"; httpStatus?: number | null; message?: string | null },
+): Promise<void> {
+  if (!env.OAUTH_DB) return;
+  await ensureCredentialSchema(env);
+  await env.OAUTH_DB.prepare(
+    `INSERT INTO plugin_connection_health (connector_id, status, http_status, message, checked_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(connector_id) DO UPDATE SET
+       status = excluded.status,
+       http_status = excluded.http_status,
+       message = excluded.message,
+       checked_at = excluded.checked_at`,
+  ).bind(connectorId, input.status, input.httpStatus ?? null, input.message?.slice(0, 500) || null, nowSeconds()).run();
 }
 
 export async function createConnectorAccessToken(env: Env, connectorId: string): Promise<string> {
