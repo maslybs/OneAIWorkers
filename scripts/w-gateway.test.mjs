@@ -79,13 +79,13 @@ test("every W Gateway response reports an available OneAIWorkers update", async 
   const originalFetch = globalThis.fetch;
   let manifestRequests = 0;
   env.UPDATE_CHECK_ENABLED = "true";
-  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.2.1.json";
+  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.2.2.json";
   globalThis.fetch = async (url) => {
     if (String(url).includes("updates.example.com")) {
       manifestRequests += 1;
       return Response.json({
         schema_version: 1,
-        latest_version: "1.2.1",
+        latest_version: "1.2.2",
         critical: false,
         message: { en: "New update.", uk: "Доступне нове оновлення." },
       });

@@ -230,8 +230,13 @@ export function pageLanguage(url: URL, request?: Request): Language {
 }
 
 function buildInstallerUrl(env: Env, operation: "install" | "update", baseUrl: string, packageId: string, language: Language): string {
-  const installerBase = String(env.PLUGIN_INSTALLER_URL || env.UPDATE_SERVICE_URL || "https://workers.bgdn.dev").replace(/\/+$/g, "");
-  const url = new URL(`${installerBase}/plugin/start`);
+  const url = new URL(String(env.PLUGIN_INSTALLER_URL || env.UPDATE_SERVICE_URL || "https://workers.bgdn.dev"));
+  const basePath = url.pathname
+    .replace(/\/(?:update\/start|plugin\/start)\/?$/u, "")
+    .replace(/\/+$/u, "");
+  url.pathname = `${basePath}/plugin/start`;
+  url.search = "";
+  url.hash = "";
   url.searchParams.set("operation", operation);
   url.searchParams.set("target", baseUrl);
   url.searchParams.set("package", packageId);

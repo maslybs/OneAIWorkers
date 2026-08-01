@@ -63,6 +63,33 @@ test("home page names ChatGPT, Claude, and other MCP-compatible clients", () => 
   assert.match(html, /https:\/\/worker\.example\/mcp/u);
 });
 
+test("legacy update-service URLs still produce a valid plugin installer link", () => {
+  const item = {
+    id: "n8n",
+    name: "n8n",
+    description: "Connect n8n.",
+    version: "0.2.0",
+  };
+  const target = {
+    id: "cloudflare-worker",
+    runtime: "cloudflare-worker",
+    version: "0.2.0",
+    package_url: "https://marketplace.example/n8n/package",
+    package_format: "oneaiworkers.connector.v1",
+    checksum: "sha256:test",
+    permissions: ["network"],
+  };
+  for (const env of [
+    { UPDATE_SERVICE_URL: "https://workers.bgdn.dev/update/start" },
+    { PLUGIN_INSTALLER_URL: "https://workers.bgdn.dev/update/start" },
+    { PLUGIN_INSTALLER_URL: "https://workers.bgdn.dev" },
+  ]) {
+    const html = connectorPageHelpers.connectorInstallPageHtml(env, "https://parent.user.workers.dev", item, target, "en");
+    assert.match(html, /https:\/\/workers\.bgdn\.dev\/plugin\/start\?operation=install&amp;target=https%3A%2F%2Fparent\.user\.workers\.dev&amp;package=n8n&amp;lang=en/u);
+    assert.doesNotMatch(html, /update\/start\/plugin\/start/u);
+  }
+});
+
 test("connector settings links wait for an explicit same-site confirmation", () => {
   const html = connectorPageHelpers.connectorAccessPageHtml("uk");
   assert.match(html, /<form method="post">/u);

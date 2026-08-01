@@ -64,7 +64,7 @@ Both actions are available through W Gateway. Search first, then call the immuta
 
 ```json
 {
-  "tool_ref": "oneaiworkers:workers-ai/ai_neuron_status@1.2.0",
+  "tool_ref": "oneaiworkers:workers-ai/ai_neuron_status@1.2.1",
   "arguments": {}
 }
 ```
