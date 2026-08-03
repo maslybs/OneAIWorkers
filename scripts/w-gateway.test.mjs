@@ -9,6 +9,9 @@ import { build } from "esbuild";
 
 const root = path.resolve(import.meta.dirname, "..");
 const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "oneaiworkers-w-gateway-"));
+const expectedRuntimeVersion = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
+const [runtimeMajor, runtimeMinor, runtimePatch] = expectedRuntimeVersion.split(".").map(Number);
+const newerRuntimeVersion = `${runtimeMajor}.${runtimeMinor}.${runtimePatch + 1}`;
 
 await build({
   entryPoints: { gateway: path.join(root, "src", "w-gateway", "index.ts") },
@@ -27,6 +30,7 @@ const d1 = d1Adapter(database);
 const env = {
   OAUTH_DB: d1,
   UPDATE_CHECK_ENABLED: "false",
+  CREDENTIALS_MASTER_KEY: "w-gateway-test-master-key-0123456789abcdef",
   AI: {
     async run(_model, input) {
       const values = Array.isArray(input.text) ? input.text : [input.text];
@@ -54,18 +58,18 @@ test.after(() => {
   fs.rmSync(outputDirectory, { recursive: true, force: true });
 });
 
-test("meta mode always exposes exactly the six stable W tools", async () => {
+test("meta mode exposes the stable W tools and confirmation controls", async () => {
   const serverWithoutDatabase = await gateway.createWGatewayServer({}, request);
   assert.equal(
     Object.keys(serverWithoutDatabase._registeredTools).length,
-    6,
+    9,
     "building tools/list must not read or initialize the plugin registry",
   );
 
   const server = await gateway.createWGatewayServer(env, request);
   assert.deepEqual(
     Object.keys(server._registeredTools).sort(),
-    ["w_agent_run", "w_call", "w_describe", "w_present", "w_result_read", "w_search"],
+    ["w_agent_run", "w_call", "w_confirmation_settings", "w_confirmation_status", "w_describe", "w_present", "w_result_read", "w_revoke_plugin_trust", "w_search"],
   );
 
   const before = Object.keys(server._registeredTools).sort();
@@ -79,13 +83,13 @@ test("every W Gateway response reports an available OneAIWorkers update", async 
   const originalFetch = globalThis.fetch;
   let manifestRequests = 0;
   env.UPDATE_CHECK_ENABLED = "true";
-  env.UPDATE_MANIFEST_URL = "https://updates.example.com/oneaiworkers-1.2.3.json";
+  env.UPDATE_MANIFEST_URL = `https://updates.example.com/oneaiworkers-${newerRuntimeVersion}.json`;
   globalThis.fetch = async (url) => {
     if (String(url).includes("updates.example.com")) {
       manifestRequests += 1;
       return Response.json({
         schema_version: 1,
-        latest_version: "1.2.3",
+        latest_version: newerRuntimeVersion,
         critical: false,
         message: { en: "New update.", uk: "Доступне нове оновлення." },
       });
@@ -580,6 +584,51 @@ test("confirmation tokens are bound to the user, operation, and unchanged argume
   assert.notEqual(other.confirmation_token, first.confirmation_token);
 });
 
+test("one browser approval can remember automatic actions for only one plugin and MCP identity", async () => {
+  env.CREDENTIALS_MASTER_KEY = "w-gateway-test-master-key-0123456789abcdef";
+  const toolRef = await firstConfirmationTool(d1);
+  const argumentsValue = validArgumentsFor(toolRef);
+  const first = await gateway.wCall(env, context, { tool_ref: toolRef, arguments: argumentsValue });
+  const browser = await gateway.openConfirmationApproval(env, first.confirmation_token);
+  assert.ok(browser);
+  assert.equal(browser.executesInBrowser, true);
+  assert.equal(browser.pluginId, "oneaiworkers");
+  assert.equal((await gateway.approveConfirmation(env, first.confirmation_token, browser.browserNonce)).ok, true);
+
+  const intent = await gateway.loadConfirmationIntent(env, first.confirmation_token);
+  assert.ok(intent);
+  await gateway.allowAutomaticPluginActions(
+    env,
+    { ...intent.context, baseUrl: context.baseUrl },
+    intent.plugin.id,
+    intent.plugin.versionId,
+  );
+  const completed = await gateway.wCall(env, context, {
+    ...intent.input,
+    confirmation_token: first.confirmation_token,
+  });
+  assert.equal(completed.ok, true, JSON.stringify(completed));
+
+  const status = await gateway.confirmationStatus(env, context, first.confirmation_token);
+  assert.equal(status.status, "completed");
+  assert.deepEqual(status.result, completed);
+
+  const automatic = await gateway.wCall(env, context, { tool_ref: toolRef, arguments: argumentsValue });
+  assert.equal(automatic.ok, true, JSON.stringify(automatic));
+  assert.notEqual(automatic.confirmation_required, true);
+
+  const policies = await gateway.listAutomaticPluginActions(env, context);
+  assert.equal(policies.some((policy) => policy.plugin_id === intent.plugin.id), true);
+
+  const otherEndpoint = { ...context, endpointId: "meta:/another-mcp" };
+  const isolated = await gateway.wCall(env, otherEndpoint, { tool_ref: toolRef, arguments: argumentsValue });
+  assert.equal(isolated.confirmation_required, true);
+
+  assert.equal(await gateway.revokeAutomaticPluginActions(env, context, intent.plugin.id), true);
+  const afterRevocation = await gateway.wCall(env, context, { tool_ref: toolRef, arguments: argumentsValue });
+  assert.equal(afterRevocation.confirmation_required, true);
+});
+
 test("the public MCP response preserves the one-time confirmation token", async () => {
   const server = await gateway.createWGatewayServer(env, request);
   const toolRef = await firstConfirmationTool(d1);
@@ -590,8 +639,9 @@ test("the public MCP response preserves the one-time confirmation token", async 
   assert.equal(response.structuredContent.data.confirmation_required, true);
   assert.match(response.structuredContent.data.confirmation_token, /^[A-Za-z0-9_-]{20,}$/u);
   assert.notEqual(response.structuredContent.data.confirmation_token, "[redacted]");
-  assert.equal(response.structuredContent.retry_same_action_after_approval, true);
-  assert.equal(response.structuredContent.do_not_only_check_plugin_list, true);
+  assert.equal(response.structuredContent.action_runs_from_confirmation_page, true);
+  assert.equal(response.structuredContent.retry_same_action_after_approval, false);
+  assert.equal(response.structuredContent.confirmation_status_tool, "w_confirmation_status");
   assert.equal(response.structuredContent.confirmation_token, response.structuredContent.data.confirmation_token);
 });
 
