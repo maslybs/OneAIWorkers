@@ -57,14 +57,15 @@ export function mcpText(payload: ToolResultPayload) {
           confirmation_url: confirmationAction.url,
           confirmation_token: confirmationAction.token,
           open_confirmation_url_in_browser: true,
-          retry_same_action_after_approval: true,
-          do_not_only_check_plugin_list: true,
+          action_runs_from_confirmation_page: true,
+          retry_same_action_after_approval: false,
+          confirmation_status_tool: "w_confirmation_status",
           response_instruction: confirmationAction.response_instruction,
         }
       : {}),
     ...(payload.update && confirmationAction
       ? {
-          response_instruction: "Put the update link first, then the confirmation link. After browser approval, repeat the exact same w_call with unchanged arguments and confirmation_token. / Поставте спочатку посилання на оновлення, а потім посилання підтвердження. Після схвалення у браузері повторіть той самий w_call з незмінними аргументами й confirmation_token.",
+          response_instruction: "Put the update link first, then the confirmation link. The confirmation page runs the approved action. After the user returns, call w_confirmation_status with confirmation_token; do not repeat w_call. / Поставте спочатку посилання на оновлення, а потім посилання підтвердження. Сторінка підтвердження сама виконає погоджену дію. Після повернення користувача викличте w_confirmation_status з confirmation_token; не повторюйте w_call.",
         }
       : {}),
   };
@@ -134,7 +135,7 @@ function confirmationBrowserAction(data: unknown): { url: string; token: string;
   return {
     url: value.confirmation_url,
     token: value.confirmation_token,
-    response_instruction: "Put this confirmation link first. After the user approves it, repeat the exact same w_call with unchanged tool_ref, arguments, and confirmation_token. Merely listing plugins does not execute the approved action. / Поставте це посилання підтвердження першим. Після схвалення повторіть той самий w_call із незмінними tool_ref, arguments і confirmation_token. Простий перегляд списку плагінів не виконує схвалену дію.",
+    response_instruction: "Put this confirmation link first. The page lets the user run this action once or always allow actions from this plugin. The page runs the approved action. After the user returns, call w_confirmation_status with confirmation_token; do not repeat w_call. / Поставте це посилання підтвердження першим. На сторінці користувач може виконати лише цю дію або назавжди дозволити дії цього плагіна. Сторінка сама виконає погоджену дію. Після повернення користувача викличте w_confirmation_status з confirmation_token; не повторюйте w_call.",
   };
 }
 
@@ -145,8 +146,8 @@ function confirmationSummary(
   return [
     action.url,
     "CONFIRM IN A NORMAL BROWSER / ПІДТВЕРДЬТЕ У ЗВИЧАЙНОМУ БРАУЗЕРІ",
-    "After approval, repeat the exact same w_call with unchanged arguments and confirmation_token. / Після схвалення повторіть той самий w_call з незмінними аргументами й confirmation_token.",
-    "Do not only check the plugin list: that does not execute the approved action. / Не обмежуйтеся перевіркою списку плагінів: вона не виконує схвалену дію.",
+    "The page runs the approved action. It can also remember permission for this plugin. / Сторінка сама виконає погоджену дію. Вона також може запам’ятати дозвіл для цього плагіна.",
+    "After the user returns, call w_confirmation_status with this token. Do not repeat w_call. / Після повернення користувача викличте w_confirmation_status із цим token. Не повторюйте w_call.",
     action.token,
     result,
   ].filter(Boolean).join("\n");

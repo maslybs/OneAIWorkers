@@ -72,7 +72,7 @@ When a client connects, OneAIWorkers instructs it to start with an empty `w_sear
 5. `w_result_read` reads a small part of a large stored result.
 6. `w_agent_run` starts an approved agent or team with limits.
 
-Permissions are applied before search and checked again before execution. Risky actions require the user to open a protected browser link. The resulting one-time approval is bound to the user, action, and unchanged arguments, so an agent cannot approve itself.
+Permissions are applied before search and checked again before execution. For a risky action, the protected browser page offers two choices: run only that exact action, or remember automatic permission for that one plugin. Remembered permission is limited to the same user and MCP endpoint, can be revoked, and resets when the plugin is updated. The browser runs the approved action itself, so the client must not repeat `w_call`.
 
 ## Add a plugin
 

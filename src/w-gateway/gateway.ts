@@ -9,6 +9,8 @@ import type { Env } from "../types";
 import { APP_VERSION, getUpdateState, updateNotice } from "../update";
 import { createWRequestContext } from "./context";
 import { semanticPluginThreshold } from "./config";
+import { confirmationStatus } from "./confirmation";
+import { listAutomaticPluginActions, revokeAutomaticPluginActions } from "./confirmation-policy";
 import { processEmbeddingJobs, rebuildVectorClusters } from "./embeddings";
 import { resolveExecutableTool, wCall } from "./execution";
 import { loadPolicy, toolAllowed } from "./policy";
@@ -21,6 +23,7 @@ import type { CapabilityKind, ExposureMode, WRequestContext } from "./types";
 const OAUTH_SECURITY_SCHEMES = [{ type: "oauth2", scopes: ["mcp"] }] as const;
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const READ_EXTERNAL = { readOnlyHint: true, destructiveHint: false, openWorldHint: true };
+const WRITE_INTERNAL = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 const WRITE_EXTERNAL = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
 const gatewayUpdateNotices = new WeakMap<McpServer, () => Promise<ReturnType<typeof updateNotice>>>();
 
@@ -55,6 +58,8 @@ function gatewayInstructions(): string {
     "For a task, call w_search with the user's goal. If it returns an installed plugin that needs setup, obtain its protected settings link. If it returns a marketplace match, put the exact install_url first and tell the user to open it in a normal browser.",
     "Never invent plugins, never rely on an old catalog remembered by the client, and never ask the user to paste service keys into chat. Keys are entered only on the protected page of the user's own OneAIWorkers.",
     "After choosing an operation, call w_describe for the exact tool_ref, then w_call. Do not guess schemas or versioned references.",
+    "When w_call returns a confirmation link, tell the user that the page offers either one-time execution or automatic actions for that one plugin. The browser executes the approved action. After the user returns, use w_confirmation_status; do not repeat w_call.",
+    "If the user wants to review or disable automatic plugin actions, use w_confirmation_settings or w_revoke_plugin_trust.",
     "Українською: на початку розмови та на питання про можливості, встановлення або оновлення спочатку викличте w_search з порожнім запитом. Він повертає встановлені плагіни, живий ринок і точні посилання. Не вигадуйте плагіни й не просіть ключі в чаті.",
   ].join("\n");
 }
@@ -114,6 +119,51 @@ export function registerWGatewayTools(server: McpServer, env: Env, context: WReq
     },
     (args) => wCall(env, context, args),
     WRITE_EXTERNAL,
+  );
+  register(
+    server,
+    "w_confirmation_settings",
+    "Show automatic plugin permissions",
+    bi(
+      "Lists plugins that may run confirmed actions automatically for this MCP connection.",
+      "Показує плагіни, яким дозволено автоматично виконувати дії в цьому MCP-підключенні.",
+    ),
+    {},
+    async () => ({
+      ok: true,
+      default_mode: "confirm_each_action",
+      automatic_plugins: await listAutomaticPluginActions(env, context),
+    }),
+    READ_ONLY,
+  );
+  register(
+    server,
+    "w_confirmation_status",
+    "Check an approved action",
+    bi(
+      "Returns the result of the action executed from a confirmation page. Use this after the user returns; do not repeat w_call.",
+      "Повертає результат дії, виконаної зі сторінки підтвердження. Використовуйте після повернення користувача й не повторюйте w_call.",
+    ),
+    { confirmation_token: z.string().min(20).max(300) },
+    (args) => confirmationStatus(env, context, args.confirmation_token),
+    READ_ONLY,
+  );
+  register(
+    server,
+    "w_revoke_plugin_trust",
+    "Require confirmations for a plugin again",
+    bi(
+      "Removes automatic action permission for one plugin. Future risky actions require confirmation again.",
+      "Вимикає автоматичні дії для одного плагіна. Наступні ризикові дії знову потребуватимуть підтвердження.",
+    ),
+    { plugin_id: z.string().min(1).max(100) },
+    async (args) => ({
+      ok: true,
+      plugin_id: args.plugin_id,
+      revoked: await revokeAutomaticPluginActions(env, context, args.plugin_id),
+      mode: "confirm_each_action",
+    }),
+    WRITE_INTERNAL,
   );
   register(
     server,

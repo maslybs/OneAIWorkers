@@ -158,6 +158,11 @@ const SCHEMA = [
     endpoint_id TEXT NOT NULL,
     tool_ref TEXT NOT NULL,
     arguments_hash TEXT NOT NULL,
+    intent_ciphertext TEXT,
+    intent_iv TEXT,
+    intent_version INTEGER,
+    result_json TEXT,
+    completed_at TEXT,
     expires_at TEXT NOT NULL,
     used_at TEXT,
     created_at TEXT NOT NULL
@@ -168,6 +173,17 @@ const SCHEMA = [
     approved_at TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY(token_hash) REFERENCES w_confirmation_tokens(token_hash)
+  )`,
+  `CREATE TABLE IF NOT EXISTS w_plugin_confirmation_policies (
+    tenant_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    endpoint_id TEXT NOT NULL,
+    plugin_id TEXT NOT NULL,
+    plugin_version_id TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(tenant_id, user_id, endpoint_id, plugin_id)
   )`,
   `CREATE TABLE IF NOT EXISTS w_idempotency_keys (
     tenant_id TEXT NOT NULL,
@@ -267,6 +283,7 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_w_tools_capability ON w_tools(capability_id, enabled, status)`,
   `CREATE INDEX IF NOT EXISTS idx_w_vectors_cluster ON w_tool_vectors(cluster_id, embedding_model)`,
   `CREATE INDEX IF NOT EXISTS idx_w_permissions_endpoint ON w_endpoint_permissions(endpoint_id, permission)`,
+  `CREATE INDEX IF NOT EXISTS idx_w_confirmation_policy_owner ON w_plugin_confirmation_policies(tenant_id, user_id, endpoint_id)`,
   `CREATE INDEX IF NOT EXISTS idx_w_results_owner ON w_result_refs(tenant_id, user_id, endpoint_id, expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_w_search_expiry ON w_search_sessions(expires_at)`,
   `CREATE VIRTUAL TABLE IF NOT EXISTS w_tool_fts USING fts5(
@@ -286,6 +303,7 @@ export async function ensureWGatewaySchema(env: Env): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
       for (const sql of SCHEMA) await db.prepare(sql).run();
+      await ensureConfirmationColumns(db);
       const now = new Date().toISOString();
       await db.prepare(
         "INSERT OR IGNORE INTO w_meta (key, value, updated_at) VALUES ('catalog_revision', '0', ?)",
@@ -304,6 +322,20 @@ export async function ensureWGatewaySchema(env: Env): Promise<void> {
     });
   }
   await schemaReady;
+}
+
+async function ensureConfirmationColumns(db: D1Database): Promise<void> {
+  const existing = await db.prepare("PRAGMA table_info(w_confirmation_tokens)").all<{ name: string }>();
+  const columns = new Set((existing.results || []).map((column) => column.name));
+  for (const [name, type] of [
+    ["intent_ciphertext", "TEXT"],
+    ["intent_iv", "TEXT"],
+    ["intent_version", "INTEGER"],
+    ["result_json", "TEXT"],
+    ["completed_at", "TEXT"],
+  ] as const) {
+    if (!columns.has(name)) await db.prepare(`ALTER TABLE w_confirmation_tokens ADD COLUMN ${name} ${type}`).run();
+  }
 }
 
 export async function catalogRevision(env: Env): Promise<number> {

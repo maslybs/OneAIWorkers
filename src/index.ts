@@ -40,7 +40,14 @@ import {
 import { registerInstalledConnector } from "./connector-installation";
 import { getInstalledPackage, getMarketplaceItem } from "./marketplace";
 import { getPluginCredentialDefinition, verifyPluginConnection } from "./tools/integrations";
-import { approveConfirmation, createWAdminServer, openConfirmationApproval } from "./w-gateway";
+import {
+  allowAutomaticPluginActions,
+  approveConfirmation,
+  createWAdminServer,
+  loadConfirmationIntent,
+  openConfirmationApproval,
+  wCall,
+} from "./w-gateway";
 
 export { AgentManager } from "./agents";
 
@@ -91,8 +98,15 @@ export default {
             });
           }
           const headers = new Headers(connectorPageHeaders());
-          headers.append("set-cookie", `oneaiworkers_confirmation=${pending.browserNonce}; Path=/confirm/; Max-Age=600; HttpOnly; Secure; SameSite=Strict`);
-          return new Response(confirmationApprovalPageHtml(language, "pending", pending.toolRef), { headers });
+          headers.append("set-cookie", `oneaiworkers_confirmation=${pending.browserNonce}; Path=/confirm/; Max-Age=1800; HttpOnly; Secure; SameSite=Strict`);
+          return new Response(confirmationApprovalPageHtml(
+            language,
+            "pending",
+            pending.toolRef,
+            undefined,
+            pending.executesInBrowser,
+            pending.pluginId,
+          ), { headers });
         }
         if (!isSameOriginFormRequest(request, baseUrl)) {
           return new Response(confirmationApprovalPageHtml(language, "expired"), {
@@ -100,14 +114,50 @@ export default {
             headers: connectorPageHeaders(),
           });
         }
+        const form = await request.formData();
+        const approvalScope = form.get("approval_scope") === "plugin" ? "plugin" : "once";
         const browserNonce = cookieValue(request, "oneaiworkers_confirmation");
         const approved = browserNonce ? await approveConfirmation(env, token, browserNonce) : { ok: false as const };
         const headers = new Headers(connectorPageHeaders());
         headers.append("set-cookie", "oneaiworkers_confirmation=; Path=/confirm/; Max-Age=0; HttpOnly; Secure; SameSite=Strict");
-        return new Response(confirmationApprovalPageHtml(language, approved.ok ? "approved" : "expired"), {
-          status: approved.ok ? 200 : 410,
-          headers,
+        if (!approved.ok) {
+          return new Response(confirmationApprovalPageHtml(language, "expired"), { status: 410, headers });
+        }
+        const intent = await loadConfirmationIntent(env, token);
+        if (!intent) {
+          return new Response(confirmationApprovalPageHtml(language, "approved"), { status: 200, headers });
+        }
+        if (approvalScope === "plugin") {
+          await allowAutomaticPluginActions(env, {
+            ...intent.context,
+            baseUrl,
+          }, intent.plugin.id, intent.plugin.versionId);
+        }
+        const execution = await wCall(env, {
+          ...intent.context,
+          baseUrl,
+        }, {
+          ...intent.input,
+          confirmation_token: token,
         });
+        const executionRecord = execution && typeof execution === "object" && !Array.isArray(execution)
+          ? execution as Record<string, unknown>
+          : {};
+        const executionError = executionRecord.error && typeof executionRecord.error === "object" && !Array.isArray(executionRecord.error)
+          ? executionRecord.error as Record<string, unknown>
+          : {};
+        const completed = executionRecord.ok === true;
+        return new Response(confirmationApprovalPageHtml(
+          language,
+          completed ? "completed" : "failed",
+          approved.toolRef,
+          completed && approvalScope === "plugin"
+            ? biInline(
+              `Automatic actions are enabled for plugin ${intent.plugin.id}.`,
+              `Автоматичні дії ввімкнено для плагіна ${intent.plugin.id}.`,
+            )
+            : typeof executionError.message === "string" ? executionError.message : undefined,
+        ), { status: completed ? 200 : 502, headers });
       }
 
       const connectorInstallMatch = url.pathname.match(/^\/plugins\/install\/([a-z0-9_-]+)$/);

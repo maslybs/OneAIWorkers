@@ -2,7 +2,8 @@ import { randomToken, sha256Base64Url } from "../crypto";
 import { redactSensitiveText, redactSensitiveValue } from "../security";
 import { callConnectorTool } from "../tools/integrations";
 import type { Env } from "../types";
-import { consumeConfirmationToken, issueConfirmationToken } from "./confirmation";
+import { consumeConfirmationToken, issueConfirmationToken, storeConfirmationResult } from "./confirmation";
+import { pluginActionsAutomatic } from "./confirmation-policy";
 import { validateJsonSchema } from "./json-schema";
 import { loadPolicy, toolAllowed } from "./policy";
 import { normalizeExecutionResult } from "./results";
@@ -78,24 +79,56 @@ export async function wCall(env: Env, context: WRequestContext, input: WCallInpu
   const connectionId = await resolveConnection(env, context, tool, input.connection_id);
 
   let confirmationUsed = false;
-  if (tool.requires_confirmation) {
-    confirmationUsed = await consumeConfirmationToken(env, context, tool.tool_ref, argumentsHash, input.confirmation_token || "");
-    if (!confirmationUsed) {
-      const issued = await issueConfirmationToken(env, context, tool.tool_ref, argumentsHash);
+  let consumedConfirmationToken = "";
+  const automaticPluginApproval = Boolean(tool.requires_confirmation) && !input.confirmation_token && await pluginActionsAutomatic(
+    env,
+    context,
+    tool.plugin_id,
+    tool.plugin_version_id,
+  );
+  if (tool.requires_confirmation && !automaticPluginApproval) {
+    const confirmation = await consumeConfirmationToken(env, context, tool.tool_ref, argumentsHash, input.confirmation_token || "");
+    if (confirmation.status === "replay") return confirmation.result;
+    if (confirmation.status === "processing") {
       return {
         ok: false,
-        confirmation_required: true,
+        confirmation_processing: true,
         tool_ref: tool.tool_ref,
-        confirmation_token: issued.token,
-        confirmation_url: `${context.baseUrl}/confirm/${encodeURIComponent(issued.token)}`,
-        expires_at: issued.expiresAt,
-        message: "Ask the user to open the confirmation link and approve the exact action. Retry only after that approval, with unchanged arguments and this token.",
+        message: "The approved action is already running. Check its status instead of creating another confirmation.",
       };
     }
+    if (confirmation.status === "pending") {
+      return confirmationRequired(context, tool.tool_ref, input.confirmation_token || "", confirmation.expiresAt);
+    }
+    confirmationUsed = confirmation.status === "consumed";
+    if (!confirmationUsed) {
+      const issued = await issueConfirmationToken(env, context, tool.tool_ref, argumentsHash, {
+        plugin: {
+          id: tool.plugin_id,
+          versionId: tool.plugin_version_id,
+        },
+        context: {
+          tenantId: context.tenantId,
+          userId: context.userId,
+          endpointId: context.endpointId,
+          sessionId: context.sessionId,
+          exposureMode: context.exposureMode,
+        },
+        input: {
+          tool_ref: tool.tool_ref,
+          arguments: input.arguments || {},
+          ...(connectionId ? { connection_id: connectionId } : {}),
+          ...(input.idempotency_key ? { idempotency_key: input.idempotency_key } : {}),
+        },
+      });
+      return confirmationRequired(context, tool.tool_ref, issued.token, issued.expiresAt);
+    }
+    consumedConfirmationToken = input.confirmation_token || "";
   }
+  if (automaticPluginApproval) confirmationUsed = true;
 
   const idempotency = await existingIdempotentResult(env, context, tool, input.idempotency_key, argumentsHash);
-  if (idempotency) return idempotency;
+  if (idempotency) return finishConfirmed(env, consumedConfirmationToken, idempotency);
   const executionId = `wexec_${randomToken(18)}`;
   const keyHash = input.idempotency_key ? await sha256Base64Url(input.idempotency_key) : null;
   try {
@@ -132,7 +165,7 @@ export async function wCall(env: Env, context: WRequestContext, input: WCallInpu
         },
       };
       await auditExecution(env, context, tool, executionId, connectionId, argumentsHash, "failed", Date.now() - started, httpStatus, response.error.code, confirmationUsed, keyHash);
-      return response;
+      return finishConfirmed(env, consumedConfirmationToken, response);
     }
     const response = {
       ok: true,
@@ -143,12 +176,35 @@ export async function wCall(env: Env, context: WRequestContext, input: WCallInpu
     };
     await storeIdempotentResult(env, context, tool, input.idempotency_key, keyHash, argumentsHash, executionId, response);
     await auditExecution(env, context, tool, executionId, connectionId, argumentsHash, "completed", Date.now() - started, httpStatus, null, confirmationUsed, keyHash);
-    return response;
+    return finishConfirmed(env, consumedConfirmationToken, response);
   } catch (error) {
     const message = publicPluginText(redactSensitiveText(error instanceof Error ? error.message : "Execution failed."));
     await auditExecution(env, context, tool, executionId, connectionId, argumentsHash, "failed", Date.now() - started, null, "execution_failed", confirmationUsed, keyHash);
-    return { ok: false, execution_id: executionId, tool_ref: tool.tool_ref, duration_ms: Date.now() - started, error: { code: "execution_failed", message } };
+    return finishConfirmed(env, consumedConfirmationToken, {
+      ok: false,
+      execution_id: executionId,
+      tool_ref: tool.tool_ref,
+      duration_ms: Date.now() - started,
+      error: { code: "execution_failed", message },
+    });
   }
+}
+
+function confirmationRequired(context: WRequestContext, toolRef: string, token: string, expiresAt: string) {
+  return {
+    ok: false,
+    confirmation_required: true,
+    tool_ref: toolRef,
+    confirmation_token: token,
+    confirmation_url: `${context.baseUrl}/confirm/${encodeURIComponent(token)}`,
+    expires_at: expiresAt,
+    message: "Ask the user to open the confirmation link. The approved action will run from that page; do not repeat w_call afterward.",
+  };
+}
+
+async function finishConfirmed<T>(env: Env, token: string, result: T): Promise<T> {
+  if (token) await storeConfirmationResult(env, token, result);
+  return result;
 }
 
 export async function resolveExecutableTool(

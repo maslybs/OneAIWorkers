@@ -2,7 +2,7 @@ import { bilingualObject } from "./i18n";
 import { assertSafeOutboundUrl, fetchWithSafeRedirects } from "./security";
 import type { Env, UpdateNotice } from "./types";
 
-export const APP_VERSION = "1.2.2";
+export const APP_VERSION = "1.3.0";
 
 const DEFAULT_MANIFEST_URL = "https://api.github.com/repos/maslybs/OneAIWorkers/contents/update-manifest.json?ref=main";
 const MANIFEST_CACHE_MS = 60 * 1000;

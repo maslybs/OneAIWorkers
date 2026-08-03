@@ -54,7 +54,9 @@ The registry is not rebuilt before every search. OneAIWorkers marks it stale aft
 <plugin_id>:<capability_id>/<method>@<version>
 ```
 
-It validates the stored schema, permissions, account connection, required scopes, one-time confirmation, and repeat-protection key before using the shared runtime router. It does not accept arbitrary addresses or request methods.
+It validates the stored schema, permissions, account connection, required scopes, confirmation policy, and repeat-protection key before using the shared runtime router. It does not accept arbitrary addresses or request methods.
+
+For a risky action, the protected browser page offers two choices: run only that exact action, or remember automatic permission for that plugin. Remembered permission is isolated by tenant, user, MCP endpoint, plugin, and plugin version. It does not affect other plugins and is invalidated by a plugin update. The user can review or revoke it with the fixed confirmation control tools.
 
 Results larger than 24,000 characters are stored in D1 or R2. The response contains a preview and `result_id`; `w_result_read` reads only an authorized part for the same tenant, user, endpoint, and session.
 
@@ -66,7 +68,7 @@ After the user saves credentials, OneAIWorkers runs a safe read-only connection 
 
 When an older internal plugin still uses a Cloudflare secret such as `N8N_PSY_API_KEY`, OneAIWorkers copies the existing value into encrypted D1 storage during registry synchronization. Calls then use the managed D1 value, and the W Gateway reports the plugin as connected. Saving new values marks the registry stale, so the next `w_call` or `w_search` refreshes connection state automatically.
 
-`delete_plugins` removes several selected plugins and their saved settings under one user confirmation. After browser approval, the MCP client must repeat the same `w_call` with unchanged arguments and the returned confirmation token. Listing plugins alone does not execute the approved deletion.
+`delete_plugins` removes several selected plugins and their saved settings under one user confirmation. The protected page executes the exact stored action after the click. The MCP client must not repeat `w_call`; it can read the completed result with `w_confirmation_status`.
 
 ## `oneai.plugin.v1`
 

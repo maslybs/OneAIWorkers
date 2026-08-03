@@ -163,18 +163,30 @@ export function connectorSetupPageHtml(
 
 export function confirmationApprovalPageHtml(
   language: Language,
-  state: "pending" | "approved" | "expired",
+  state: "pending" | "approved" | "completed" | "failed" | "expired",
   toolRef?: string,
+  detail?: string,
+  executesInBrowser = false,
+  pluginId?: string,
 ): string {
   const copy = language === "uk"
     ? {
         pendingEyebrow: "Потрібне ваше підтвердження",
-        pendingTitle: "Підтвердити ризикову дію",
-        pendingBody: "OneAIWorkers виконає цю дію лише після вашого натискання. Перевірте дію в чаті перед підтвердженням.",
-        action: "Підтверджую виконання",
+        pendingTitle: "Підтвердити дію",
+        pendingBody: "Перевірте дію в чаті перед підтвердженням.",
+        pendingExecuteBody: "Після натискання OneAIWorkers одразу виконає саме цю погоджену дію. Повертатися до чату для повторного запуску не потрібно.",
+        onceAction: "Виконати лише цю дію",
+        pluginAction: "Завжди дозволяти дії цього плагіна",
+        pluginWarning: "Другий варіант дозволить цьому плагіну надалі змінювати й видаляти дані без нових підтверджень. Дозвіл діятиме лише для цього плагіна та скинеться після його оновлення.",
         approvedEyebrow: "Підтверджено",
         approvedTitle: "Можна повернутися до чату",
         approvedBody: "Дію схвалено один раз. Поверніться до чату й попросіть продовжити ту саму дію. Перевірка списку плагінів сама нічого не видаляє.",
+        completedEyebrow: "Готово",
+        completedTitle: "Дію виконано",
+        completedBody: "OneAIWorkers виконав погоджену дію. Поверніться до чату — повторювати її або створювати нове підтвердження не потрібно.",
+        failedEyebrow: "Не вдалося виконати",
+        failedTitle: "Дію не виконано",
+        failedBody: "Підтвердження отримано, але під час виконання сталася помилка. Поверніться до чату, щоб перевірити причину.",
         expiredEyebrow: "Посилання недійсне",
         expiredTitle: "Потрібне нове підтвердження",
         expiredBody: "Це посилання вже використано або строк його дії минув. Попросіть клієнт повторити дію.",
@@ -182,17 +194,38 @@ export function confirmationApprovalPageHtml(
       }
     : {
         pendingEyebrow: "Your approval is required",
-        pendingTitle: "Approve a risky action",
-        pendingBody: "OneAIWorkers will run this action only after your click. Check the action in the chat before approving it.",
-        action: "Approve this action",
+        pendingTitle: "Approve this action",
+        pendingBody: "Check the action in the chat before approving it.",
+        pendingExecuteBody: "After you click, OneAIWorkers immediately runs this exact approved action. You do not need to return to the chat to run it again.",
+        onceAction: "Run only this action",
+        pluginAction: "Always allow actions from this plugin",
+        pluginWarning: "The second option lets this plugin change and delete data without asking again. It applies only to this plugin and resets when the plugin is updated.",
         approvedEyebrow: "Approved",
         approvedTitle: "Return to your chat",
         approvedBody: "The action was approved once. Return to the chat and continue the same action. Checking the plugin list alone does not delete anything.",
+        completedEyebrow: "Done",
+        completedTitle: "Action completed",
+        completedBody: "OneAIWorkers completed the approved action. Return to the chat—you do not need to repeat it or create another confirmation.",
+        failedEyebrow: "Could not complete",
+        failedTitle: "Action not completed",
+        failedBody: "Approval succeeded, but the action failed during execution. Return to the chat to check the reason.",
         expiredEyebrow: "Link unavailable",
         expiredTitle: "A new approval is required",
         expiredBody: "This link has expired or was already used. Ask the client to start the action again.",
         operation: "Action",
       };
+  if (state === "completed") return pageShell(language, copy.completedTitle, `
+    <p class="eyebrow">${escapeHtml(copy.completedEyebrow)}</p>
+    <h1>${escapeHtml(copy.completedTitle)}</h1>
+    <p class="lead">${escapeHtml(copy.completedBody)}</p>
+    ${detail ? `<p class="safe">${escapeHtml(detail)}</p>` : ""}
+  `);
+  if (state === "failed") return pageShell(language, copy.failedTitle, `
+    <p class="eyebrow">${escapeHtml(copy.failedEyebrow)}</p>
+    <h1>${escapeHtml(copy.failedTitle)}</h1>
+    <p class="lead">${escapeHtml(copy.failedBody)}</p>
+    ${detail ? `<p class="error">${escapeHtml(detail)}</p>` : ""}
+  `);
   if (state === "approved") return pageShell(language, copy.approvedTitle, `
     <p class="eyebrow">${escapeHtml(copy.approvedEyebrow)}</p>
     <h1>${escapeHtml(copy.approvedTitle)}</h1>
@@ -206,9 +239,15 @@ export function confirmationApprovalPageHtml(
   return pageShell(language, copy.pendingTitle, `
     <p class="eyebrow">${escapeHtml(copy.pendingEyebrow)}</p>
     <h1>${escapeHtml(copy.pendingTitle)}</h1>
-    <p class="lead">${escapeHtml(copy.pendingBody)}</p>
+    <p class="lead">${escapeHtml(executesInBrowser ? copy.pendingExecuteBody : copy.pendingBody)}</p>
     <p class="safe"><strong>${escapeHtml(copy.operation)}:</strong><br>${escapeHtml(toolRef || "")}</p>
-    <form method="post"><button class="button" type="submit">${escapeHtml(copy.action)}</button></form>
+    <form method="post">
+      <button class="button" type="submit" name="approval_scope" value="once">${escapeHtml(executesInBrowser ? copy.onceAction : (language === "uk" ? "Підтвердити дію" : "Approve this action"))}</button>
+      ${pluginId ? `
+        <p class="warning"><strong>${escapeHtml(pluginId)}</strong><br>${escapeHtml(copy.pluginWarning)}</p>
+        <button class="button secondary" type="submit" name="approval_scope" value="plugin">${escapeHtml(copy.pluginAction)}</button>
+      ` : ""}
+    </form>
   `);
 }
 
@@ -270,7 +309,9 @@ function pageShell(language: Language, title: string, content: string): string {
     .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
     .meta span { border-radius: 999px; background: #eef4ff; color: #244d88; padding: 7px 11px; font-size: 13px; }
     .button { width: 100%; display: block; border: 0; border-radius: 13px; padding: 16px 20px; margin-top: 24px; color: #fff; background: #1767dc; text-align: center; text-decoration: none; font: inherit; font-weight: 800; cursor: pointer; }
+    .button.secondary { margin-top: 0; background: #18304f; }
     .safe { margin-top: 24px; padding: 16px; border-radius: 14px; background: #edf9f2; color: #155c38; }
+    .warning { margin: 4px 0 -4px; padding: 14px; border-radius: 12px; background: #fff6e8; color: #7b4a08; font-size: 14px; }
     .error { padding: 14px; border-radius: 12px; background: #fff0f0; color: #922d25; }
     form { display: grid; gap: 18px; margin-top: 28px; }
     label { display: grid; gap: 8px; font-weight: 750; }

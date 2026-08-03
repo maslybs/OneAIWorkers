@@ -3,4 +3,14 @@ export { ensureWRegistryCurrent, syncWRegistry } from "./registry";
 export { wSearch } from "./search";
 export { wCall, wCallLegacyAction } from "./execution";
 export { readStoredResult } from "./results";
-export { approveConfirmation, openConfirmationApproval } from "./confirmation";
+export {
+  allowAutomaticPluginActions,
+  listAutomaticPluginActions,
+  revokeAutomaticPluginActions,
+} from "./confirmation-policy";
+export {
+  approveConfirmation,
+  confirmationStatus,
+  loadConfirmationIntent,
+  openConfirmationApproval,
+} from "./confirmation";
