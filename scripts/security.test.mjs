@@ -19,6 +19,7 @@ await build({
     crypto: path.join(root, "src", "crypto.ts"),
     marketplace: path.join(root, "src", "marketplace.ts"),
     connectorPages: path.join(root, "src", "connector-pages.ts"),
+    updatePage: path.join(root, "src", "update-page.ts"),
     vault: path.join(root, "src", "vault.ts"),
     auth: path.join(root, "src", "auth.ts"),
   },
@@ -36,6 +37,7 @@ const homeHtmlHelpers = await import(pathToFileURL(path.join(outputDirectory, "h
 const cryptoHelpers = await import(pathToFileURL(path.join(outputDirectory, "crypto.js")));
 const marketplaceHelpers = await import(pathToFileURL(path.join(outputDirectory, "marketplace.js")));
 const connectorPageHelpers = await import(pathToFileURL(path.join(outputDirectory, "connectorPages.js")));
+const updatePageHelpers = await import(pathToFileURL(path.join(outputDirectory, "updatePage.js")));
 const vaultHelpers = await import(pathToFileURL(path.join(outputDirectory, "vault.js")));
 const authHelpers = await import(pathToFileURL(path.join(outputDirectory, "auth.js")));
 
@@ -88,6 +90,22 @@ test("legacy update-service URLs still produce a valid plugin installer link", (
     assert.match(html, /https:\/\/workers\.bgdn\.dev\/plugin\/start\?operation=install&amp;target=https%3A%2F%2Fparent\.user\.workers\.dev&amp;package=n8n&amp;lang=en/u);
     assert.doesNotMatch(html, /update\/start\/plugin\/start/u);
   }
+});
+
+test("current update page shows only the installed version", () => {
+  const html = updatePageHelpers.updatePageHtml({
+    status: "current",
+    current_version: "1.3.1",
+    latest_version: "1.3.1",
+    update_url: "https://worker.example/update",
+  }, "https://worker.example");
+
+  assert.match(html, /У вас остання версія/u);
+  assert.match(html, /OneAIWorkers 1\.3\.1/u);
+  assert.doesNotMatch(html, /Встановлено:/u);
+  assert.doesNotMatch(html, /Доступно:/u);
+  assert.doesNotMatch(html, /Секрети та ключі/u);
+  assert.doesNotMatch(html, /Ця сторінка належить/u);
 });
 
 test("connector settings links wait for an explicit same-site confirmation", () => {
