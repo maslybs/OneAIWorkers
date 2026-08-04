@@ -98,6 +98,17 @@ test("connector settings links wait for an explicit same-site confirmation", () 
   assert.match(vaultHelpers.connectorSessionCookie("test-session"), /SameSite=Lax/u);
 });
 
+test("confirmation failure page shows the safe plugin reason", () => {
+  const html = connectorPageHelpers.confirmationApprovalPageHtml(
+    "uk",
+    "failed",
+    "n8n:cloud/update_workflow@0.3.1",
+    "Автоматичний дозвіл збережено для плагіна n8n, але ця дія не виконалась: вузол не знайдено.",
+  );
+  assert.match(html, /Автоматичний дозвіл збережено для плагіна n8n/u);
+  assert.match(html, /вузол не знайдено/u);
+});
+
 test("same-origin connector forms accept browser privacy headers without trusting foreign sites", () => {
   const baseUrl = "https://worker.example";
   const formRequest = (headers = {}, url = `${baseUrl}/connectors/access/token`) => new Request(url, {

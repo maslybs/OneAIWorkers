@@ -169,6 +169,27 @@ test("W Gateway stores the complete large plugin response and can page through i
   }
 });
 
+test("W Gateway preserves a safe plugin failure reason", async () => {
+  const tool = await d1.prepare(
+    "SELECT tool_ref FROM w_tools WHERE tool_ref LIKE 'sample:%' AND method_name = 'items-list' AND enabled = 1",
+  ).first();
+  assert.ok(tool?.tool_ref);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    ok: false,
+    error: "n8n returned 400: The selected workflow node was not found.",
+  }, { status: 502 });
+  try {
+    const called = await gateway.wCall(env, context, { tool_ref: tool.tool_ref, arguments: { limit: 10 } });
+    assert.equal(called.ok, false, JSON.stringify(called));
+    assert.equal(called.error.code, "plugin_request_failed");
+    assert.equal(called.error.http_status, 502);
+    assert.equal(called.error.message, "n8n returned 400: The selected workflow node was not found.");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("an empty search explains the live marketplace on a clean client", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => Response.json({

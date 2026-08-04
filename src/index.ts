@@ -147,16 +147,25 @@ export default {
           ? executionRecord.error as Record<string, unknown>
           : {};
         const completed = executionRecord.ok === true;
+        const failureMessage = typeof executionError.message === "string"
+          ? executionError.message
+          : biInline("The plugin did not return a reason.", "Плагін не повернув причину помилки.");
+        const pageDetail = completed && approvalScope === "plugin"
+          ? biInline(
+            `Automatic actions are enabled for plugin ${intent.plugin.id}.`,
+            `Автоматичні дії ввімкнено для плагіна ${intent.plugin.id}.`,
+          )
+          : !completed && approvalScope === "plugin"
+            ? biInline(
+              `Automatic permission was saved for plugin ${intent.plugin.id}, but this action failed: ${failureMessage}`,
+              `Автоматичний дозвіл збережено для плагіна ${intent.plugin.id}, але ця дія не виконалась: ${failureMessage}`,
+            )
+            : !completed ? failureMessage : undefined;
         return new Response(confirmationApprovalPageHtml(
           language,
           completed ? "completed" : "failed",
           approved.toolRef,
-          completed && approvalScope === "plugin"
-            ? biInline(
-              `Automatic actions are enabled for plugin ${intent.plugin.id}.`,
-              `Автоматичні дії ввімкнено для плагіна ${intent.plugin.id}.`,
-            )
-            : typeof executionError.message === "string" ? executionError.message : undefined,
+          pageDetail,
         ), { status: completed ? 200 : 502, headers });
       }
 

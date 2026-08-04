@@ -150,6 +150,7 @@ export async function wCall(env: Env, context: WRequestContext, input: WCallInpu
     const safeResult = redactSensitiveValue(toPublicPluginValue(rawResult));
     const normalized = await normalizeExecutionResult(env, context, pluginResponseValue(safeResult));
     if (pluginInvocationFailed(rawResult, httpStatus)) {
+      const failureMessage = pluginFailureMessage(normalized, httpStatus);
       const response = {
         ok: false,
         execution_id: executionId,
@@ -159,7 +160,7 @@ export async function wCall(env: Env, context: WRequestContext, input: WCallInpu
           code: httpStatus === 401 || httpStatus === 403 ? "plugin_authentication_failed" : "plugin_request_failed",
           message: httpStatus === 401 || httpStatus === 403
             ? "The service rejected the saved plugin credentials. Open the protected plugin settings page and save a valid key."
-            : "The plugin request failed.",
+            : failureMessage,
           http_status: httpStatus,
           details: normalized,
         },
@@ -366,6 +367,36 @@ function pluginResponseValue(value: unknown): unknown {
   return Object.prototype.hasOwnProperty.call(response, "json")
     ? (response as Record<string, unknown>).json
     : value;
+}
+
+function pluginFailureMessage(value: unknown, httpStatus: number | null): string {
+  const detail = failureText(value);
+  if (detail) return publicPluginText(redactSensitiveText(detail)).slice(0, 1_000);
+  if (httpStatus) return `The plugin returned HTTP ${httpStatus}.`;
+  return "The plugin request failed without a detailed reason.";
+}
+
+function failureText(value: unknown, depth = 0): string | null {
+  if (depth > 6 || value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const clean = value.trim();
+    return clean && clean.length <= 4_000 ? clean : clean.slice(0, 4_000) || null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 12)) {
+      const found = failureText(item, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  for (const key of ["message", "error", "detail", "reason"]) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    const found = failureText(record[key], depth + 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 function canonicalJson(value: unknown): string {
