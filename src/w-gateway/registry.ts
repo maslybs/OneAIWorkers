@@ -12,6 +12,7 @@ import {
   isReadOnlyConnectorAction,
   listPluginCredentialStates,
   migrateLegacyPluginCredentials,
+  refreshStaleRemoteMcpConnectors,
   SYSTEM_ACTIONS,
 } from "../tools/integrations";
 import { NATIVE_TOOLS } from "../tools/native";
@@ -86,6 +87,7 @@ export async function syncWRegistry(
 
 export async function ensureWRegistryCurrent(env: Env): Promise<void> {
   await ensureRegistryInfrastructure(env);
+  await refreshStaleRemoteMcpConnectors(env, { max: 1 }).catch(() => undefined);
   const rows = await wDatabase(env).prepare(
     "SELECT key, value FROM w_meta WHERE key IN ('registry_fingerprint', 'registry_runtime_version', 'registry_dirty')",
   ).all<{ key: string; value: string }>();
@@ -213,7 +215,7 @@ async function collectRegistryTools(env: Env): Promise<RegistryToolInput[]> {
   for (const plugin of connectorRows.results || []) {
     const installed = packages.get(plugin.connector_id);
     const version = installed?.installed_version || legacyVersion(plugin.updated_at);
-    const capabilityId = plugin.mode === "child_worker" ? "cloud" : "api";
+    const capabilityId = plugin.mode === "child_worker" ? "cloud" : plugin.mode === "remote_mcp" ? "mcp" : "api";
     for (const action of actionsByPlugin.get(plugin.connector_id) || []) {
       const methodName = publicMethodName(action.action_name);
       const inputSchema = action.input_schema_json ? safeJson(action.input_schema_json, { type: "object" }) : { type: "object" };
@@ -230,16 +232,16 @@ async function collectRegistryTools(env: Env): Promise<RegistryToolInput[]> {
         capabilityTitle: plugin.name,
         capabilityDescription: plugin.description || `${plugin.name} operations.`,
         target: "oneaiworkers-cloudflare",
-        runtimeType: plugin.mode === "child_worker" ? "child_worker" : "http",
+        runtimeType: plugin.mode === "child_worker" ? "child_worker" : plugin.mode === "remote_mcp" ? "remote_mcp" : "http",
         methodName,
-        title: `${plugin.name}: ${humanizeActionName(methodName)}`,
+        title: action.title || `${plugin.name}: ${humanizeActionName(methodName)}`,
         description: userFacingDescription(action.description || `Runs ${humanizeActionName(methodName)} in ${plugin.name}.`),
         inputSchema,
-        outputSchema: { type: "object" },
+        outputSchema: action.output_schema_json ? safeJson(action.output_schema_json, { type: "object" }) : { type: "object" },
         executionPlan: { type: "legacy", connector_id: plugin.connector_id, action_name: action.action_name },
         readOnly,
         destructive: isDestructiveConnectorAction(action),
-        idempotent: readOnly,
+        idempotent: action.idempotent_override == null ? readOnly : Boolean(action.idempotent_override),
         requiresConfirmation: !readOnly,
         connectionType: requiresConnection(plugin, action, installed) ? plugin.connector_id : null,
         semanticFamily: `${plugin.connector_id}:${familyFor(methodName)}`,
@@ -512,6 +514,7 @@ function pluginizeSchemaValue(value: unknown): unknown {
 }
 
 function requiresConnection(plugin: ConnectorRow, action: ActionRow, installed?: InstalledPackageRow): boolean {
+  if (plugin.mode === "remote_mcp" && plugin.remote_mcp_auth_type && plugin.remote_mcp_auth_type !== "none") return true;
   if (plugin.mode === "child_worker" && installed) {
     try {
       const fields = JSON.parse(installed.credential_fields_json) as Array<{ required?: unknown }>;

@@ -89,8 +89,8 @@ export function connectorInstallationHelp(
         ? "Поставити повернений install_url на початку відповіді й попросити відкрити його у звичайному браузері."
         : "Put the returned install_url at the beginning of the reply and ask the user to open it in a normal browser.",
       ukrainian
-        ? "Після встановлення браузер автоматично відкриє захищену сторінку власного OneAIWorkers для введення адреси сервісу та ключа."
-        : "After installation, the browser automatically opens a protected page on the user's own OneAIWorkers for the service address and key.",
+        ? "Після встановлення браузер автоматично відкриє захищену сторінку власного OneAIWorkers для підключення акаунта через OAuth або введення потрібних credentials."
+        : "After installation, the browser automatically opens a protected page on the user's own OneAIWorkers to connect the account with OAuth or enter the required credentials.",
       ukrainian
         ? "Повернутися до чату; новий плагін одразу з’явиться в пошуку без обов’язкового перепідключення."
         : "Return to the chat; the new plugin appears in search without a required reconnect.",
@@ -179,8 +179,8 @@ export async function findCapability(
       : null,
     credential_next_step: firstMatch
       ? biInline(
-          "After installation, the browser opens a protected settings page on the user's own OneAIWorkers. Never ask for the service key in chat.",
-          "Після встановлення браузер відкриє захищену сторінку налаштувань на власному OneAIWorkers користувача. Ніколи не просіть ключ сервісу в чаті.",
+          "After installation, the browser opens a protected settings page on the user's own OneAIWorkers for OAuth or required credentials. Never ask for service credentials in chat.",
+          "Після встановлення браузер відкриє захищену сторінку налаштувань на власному OneAIWorkers користувача для OAuth або потрібних credentials. Ніколи не просіть credentials сервісу в чаті.",
         )
       : null,
     next_step: ranked.length
@@ -320,7 +320,7 @@ export function cloudTarget(item: MarketplaceItem): MarketplaceTarget | null {
   const targets = Array.isArray(item.targets) ? item.targets : Object.values(item.targets || {});
   const target = targets.find((candidate) =>
     candidate?.id === "cloudflare-worker" &&
-    candidate?.runtime === "cloudflare-worker" &&
+    ["cloudflare-worker", "remote_mcp"].includes(String(candidate?.runtime || "")) &&
     ["oneai.plugin.v1", "oneaiworkers.connector.v1"].includes(candidate?.package_format)
   );
   if (!target || !isMarketplaceTarget(target)) return null;

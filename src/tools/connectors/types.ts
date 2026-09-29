@@ -1,6 +1,8 @@
 export type JsonObject = Record<string, unknown>;
 
-export type ConnectorMode = "internal" | "child_worker";
+export type ConnectorMode = "internal" | "child_worker" | "remote_mcp";
+
+export type RemoteMcpAuthType = "none" | "bearer" | "oauth";
 
 export type OAuthClientAuthMethod = "basic" | "body";
 
@@ -51,6 +53,15 @@ export interface ConnectorRow {
   child_worker_binding: string | null;
   child_worker_token_secret: string | null;
   child_worker_token_credential: string | null;
+  remote_mcp_url: string | null;
+  remote_mcp_auth_type: RemoteMcpAuthType | null;
+  remote_mcp_token_credential: string | null;
+  remote_mcp_protocol_version: string | null;
+  remote_mcp_catalog_hash: string | null;
+  remote_mcp_catalog_ttl_ms: number | null;
+  remote_mcp_cache_scope: string | null;
+  remote_mcp_last_sync_at: number | null;
+  remote_mcp_next_sync_at: number | null;
   enabled: number;
   created_at: number;
   updated_at: number;
@@ -59,6 +70,7 @@ export interface ConnectorRow {
 export interface ActionRow {
   connector_id: string;
   action_name: string;
+  title: string | null;
   description: string | null;
   method: string;
   url: string;
@@ -67,6 +79,12 @@ export interface ActionRow {
   query_json: string;
   body_template_json: string | null;
   input_schema_json: string | null;
+  output_schema_json: string | null;
+  annotations_json: string | null;
+  remote_tool_name: string | null;
+  read_only_override: number | null;
+  destructive_override: number | null;
+  idempotent_override: number | null;
   created_at: number;
   updated_at: number;
 }

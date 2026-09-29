@@ -13,6 +13,7 @@ export interface CredentialField {
   placeholder?: string;
   help?: string;
   help_uk?: string;
+  managed?: boolean;
 }
 
 interface CredentialRow {
@@ -242,6 +243,10 @@ export function sanitizeSubmittedCredentials(
   const allowedIds = new Set(fields.map((field) => field.id));
   const output: Record<string, string> = {};
   for (const field of fields) {
+    if (field.managed) {
+      if (existing[field.id]) output[field.id] = existing[field.id];
+      continue;
+    }
     const submitted = String(form.get(field.id) || "").trim();
     if (field.type === "secret" && !submitted && existing[field.id]) output[field.id] = existing[field.id];
     else output[field.id] = submitted;

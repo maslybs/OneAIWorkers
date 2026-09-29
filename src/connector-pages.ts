@@ -105,6 +105,7 @@ export function connectorSetupPageHtml(
   language: Language,
   error?: string,
   saved = false,
+  options: { oauthConnectUrl?: string } = {},
 ): string {
   const copy = language === "uk"
     ? {
@@ -135,7 +136,8 @@ export function connectorSetupPageHtml(
       <p class="safe">${escapeHtml(copy.next)}</p>
     `);
   }
-  const controls = fields.map((field) => {
+  const editableFields = fields.filter((field) => !field.managed);
+  const controls = editableFields.map((field) => {
     const label = language === "uk" ? field.label_uk || field.label : field.label;
     const help = language === "uk" ? field.help_uk || field.help : field.help;
     const current = values[field.id] || "";
@@ -148,16 +150,24 @@ export function connectorSetupPageHtml(
       ${help ? `<small>${escapeHtml(help)}</small>` : ""}
     </label>`;
   }).join("");
+  const oauthBlock = options.oauthConnectUrl ? `
+    <a class="button" href="${escapeHtml(options.oauthConnectUrl)}">${language === "uk" ? "Підключити акаунт через OAuth" : "Connect account with OAuth"}</a>
+    <p class="safe">${language === "uk" ? "Авторизація відбувається на сайті зовнішнього сервісу. OneAIWorkers зберігає отримані токени лише у зашифрованому D1." : "Authorization happens on the external service. OneAIWorkers stores the resulting tokens only in encrypted D1."}</p>
+  ` : "";
+  const formBlock = editableFields.length ? `
+    <form method="post">
+      <input type="hidden" name="lang" value="${language}" />
+      ${controls}
+      <button class="button" type="submit">${escapeHtml(copy.save)}</button>
+    </form>
+  ` : options.oauthConnectUrl ? "" : `<p class="safe">${language === "uk" ? "Цей плагін не потребує додаткових ключів." : "This plugin needs no additional credentials."}</p>`;
   return pageShell(language, copy.title, `
     <p class="eyebrow">${escapeHtml(copy.eyebrow)}</p>
     <h1>${escapeHtml(copy.title)}</h1>
     <p class="lead">${escapeHtml(copy.body)}</p>
     ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
-    <form method="post">
-      <input type="hidden" name="lang" value="${language}" />
-      ${controls || `<p class="safe">${language === "uk" ? "Цей плагін не потребує додаткових ключів." : "This plugin needs no additional credentials."}</p>`}
-      <button class="button" type="submit">${escapeHtml(copy.save)}</button>
-    </form>
+    ${oauthBlock}
+    ${formBlock}
   `);
 }
 

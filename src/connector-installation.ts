@@ -43,16 +43,29 @@ const installTicketSchema = z.object({
     version: z.string().min(1).max(40),
     checksum: z.string().min(16).max(200),
   }),
-  plugin: z.object({
-    id: z.string().min(2).max(80),
-    name: z.string().min(1).max(120),
-    description: z.string().max(1000).optional(),
-    plugin_worker_url: z.string().url(),
-    plugin_script_name: z.string().min(1).max(80),
-    plugin_token: z.string().min(32).max(300),
-    credential_fields: z.array(credentialFieldSchema).max(30).default([]),
-    actions: z.array(actionSchema).min(1).max(50),
-  }),
+  plugin: z.union([
+    z.object({
+      runtime: z.literal("remote_mcp"),
+      id: z.string().min(2).max(80),
+      name: z.string().min(1).max(120),
+      description: z.string().max(1000).optional(),
+      remote_mcp_url: z.string().url(),
+      remote_mcp_auth_type: z.enum(["none", "bearer", "oauth"]).default("none"),
+      remote_mcp_token_credential: z.string().regex(/^[a-z][a-z0-9_]{1,79}$/).nullable().optional(),
+      credential_fields: z.array(credentialFieldSchema).max(30).default([]),
+    }),
+    z.object({
+      runtime: z.literal("child_worker").optional(),
+      id: z.string().min(2).max(80),
+      name: z.string().min(1).max(120),
+      description: z.string().max(1000).optional(),
+      plugin_worker_url: z.string().url(),
+      plugin_script_name: z.string().min(1).max(80),
+      plugin_token: z.string().min(32).max(300),
+      credential_fields: z.array(credentialFieldSchema).max(30).default([]),
+      actions: z.array(actionSchema).min(1).max(50),
+    }),
+  ]),
 });
 
 export async function registerInstalledConnector(env: Env, baseUrl: string, ticket: string) {
@@ -67,10 +80,12 @@ export async function registerInstalledConnector(env: Env, baseUrl: string, tick
 
   const catalogEntry = await getMarketplaceItem(env, payload.package.id);
   if (!catalogEntry) throw new Error("This cloud plugin is no longer available in the marketplace.");
+  const expectedRuntime = payload.plugin.runtime === "remote_mcp" ? "remote_mcp" : "cloudflare-worker";
   if (
     catalogEntry.target.id !== payload.package.target_id ||
     catalogEntry.target.version !== payload.package.version ||
-    catalogEntry.target.checksum !== payload.package.checksum
+    catalogEntry.target.checksum !== payload.package.checksum ||
+    catalogEntry.target.runtime !== expectedRuntime
   ) {
     throw new Error("Installation ticket does not match the current marketplace package.");
   }
@@ -78,25 +93,48 @@ export async function registerInstalledConnector(env: Env, baseUrl: string, tick
   await consumeInstallNonce(env, payload.nonce, payload.exp);
   const connectorId = safeKey(payload.plugin.id).replaceAll(":", "-");
   const previousPackage = await getInstalledPackage(env, connectorId);
-  await storeCredentialProfile(env, connectorId, "system", { child_token: payload.plugin.plugin_token });
-  await saveConnector(env, {
-    connector_id: connectorId,
-    name: payload.plugin.name,
-    description: payload.plugin.description,
-    mode: "child_worker",
-    child_worker_url: payload.plugin.plugin_worker_url,
-    child_worker_token_credential: "child_token",
-    actions: payload.plugin.actions,
-  });
-  await saveInstalledPackage(env, {
-    connectorId,
-    packageId: payload.package.id,
-    targetId: payload.package.target_id,
-    version: payload.package.version,
-    checksum: payload.package.checksum,
-    childScriptName: payload.plugin.plugin_script_name,
-    credentialFields: payload.plugin.credential_fields,
-  });
+  if (payload.plugin.runtime === "remote_mcp") {
+    await saveConnector(env, {
+      connector_id: connectorId,
+      name: payload.plugin.name,
+      description: payload.plugin.description,
+      mode: "remote_mcp",
+      remote_mcp_url: payload.plugin.remote_mcp_url,
+      remote_mcp_auth_type: payload.plugin.remote_mcp_auth_type,
+      remote_mcp_token_credential: payload.plugin.remote_mcp_token_credential || undefined,
+      actions: [],
+    });
+    await saveInstalledPackage(env, {
+      connectorId,
+      packageId: payload.package.id,
+      targetId: payload.package.target_id,
+      version: payload.package.version,
+      checksum: payload.package.checksum,
+      childScriptName: null,
+      credentialFields: payload.plugin.credential_fields,
+    });
+  } else {
+    await storeCredentialProfile(env, connectorId, "system", { child_token: payload.plugin.plugin_token });
+    await saveConnector(env, {
+      connector_id: connectorId,
+      name: payload.plugin.name,
+      description: payload.plugin.description,
+      mode: "child_worker",
+      child_worker_url: payload.plugin.plugin_worker_url,
+      child_worker_token_credential: "child_token",
+      remote_mcp_auth_type: "none",
+      actions: payload.plugin.actions,
+    });
+    await saveInstalledPackage(env, {
+      connectorId,
+      packageId: payload.package.id,
+      targetId: payload.package.target_id,
+      version: payload.package.version,
+      checksum: payload.package.checksum,
+      childScriptName: payload.plugin.plugin_script_name,
+      credentialFields: payload.plugin.credential_fields,
+    });
+  }
 
   const accessToken = await createConnectorAccessToken(env, connectorId);
   return {
@@ -106,7 +144,9 @@ export async function registerInstalledConnector(env: Env, baseUrl: string, tick
     version: payload.package.version,
     previous_child_script_name: previousPackage?.child_script_name || null,
     setup_url: `${baseUrl}/plugins/access/${encodeURIComponent(accessToken)}?lang=${payload.lang}`,
-    credentials_required: payload.plugin.credential_fields.some((field) => field.required),
+    credentials_required: payload.plugin.runtime === "remote_mcp"
+      ? payload.plugin.remote_mcp_auth_type !== "none" || payload.plugin.credential_fields.some((field) => field.required)
+      : payload.plugin.credential_fields.some((field) => field.required),
   };
 }
 

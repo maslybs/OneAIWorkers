@@ -2,11 +2,13 @@
 
 [Українська версія](README.uk.md)
 
-OneAIWorkers is a private MCP gateway for ChatGPT, Claude, and other MCP-compatible clients. It runs in your Cloudflare account, keeps service keys encrypted in your own D1 database, and extends through installable plugins.
+OneAIWorkers is a private MCP gateway for ChatGPT, Claude, and other MCP-compatible clients. It runs in your Cloudflare account, keeps service credentials encrypted in your own D1 database, and extends through installable plugins and remote MCP servers.
 
 ```text
-ChatGPT / Claude / another MCP client → OneAIWorkers → installed plugins and services
+ChatGPT / Claude / another MCP client → OneAIWorkers → installed plugins / remote MCP servers / services
 ```
+
+For standard remote MCP servers over HTTPS Streamable HTTP, OneAIWorkers acts as a managed MCP proxy: it discovers the upstream tool catalog, stores only normalized metadata locally, applies its own search, permissions, confirmations, idempotency and audit rules, then forwards the selected tool call to the upstream MCP server. OAuth-capable MCP servers can use discovery, Dynamic Client Registration and PKCE without deploying a separate child Worker.
 
 ## Install
 
@@ -50,12 +52,15 @@ See [client setup](docs/CLIENTS.md) for examples.
 
 ## How it works
 
-The public MCP surface always contains exactly six commands:
+The public MCP surface always contains exactly nine commands:
 
 ```text
 w_search
 w_describe
 w_call
+w_confirmation_settings
+w_confirmation_status
+w_revoke_plugin_trust
 w_present
 w_result_read
 w_agent_run
@@ -68,9 +73,12 @@ When a client connects, OneAIWorkers instructs it to start with an empty `w_sear
 1. `w_search` explains what is available and finds allowed actions. Small catalogs use exact names and D1 text search; meaning search is only added when it is useful.
 2. `w_describe` loads the exact stored schemas only for selected actions.
 3. `w_call` validates and runs one immutable action.
-4. `w_present` is reserved for visual results.
-5. `w_result_read` reads a small part of a large stored result.
-6. `w_agent_run` starts an approved agent or team with limits.
+4. `w_confirmation_settings` shows remembered per-plugin action permissions.
+5. `w_confirmation_status` reads the result of an action executed from a confirmation page.
+6. `w_revoke_plugin_trust` disables remembered automatic actions for a plugin.
+7. `w_present` is reserved for visual results.
+8. `w_result_read` reads a small part of a large stored result.
+9. `w_agent_run` starts an approved agent or team with limits.
 
 Permissions are applied before search and checked again before execution. For a risky action, the protected browser page offers two choices: run only that exact action, or remember automatic permission for that one plugin. Remembered permission is limited to the same user and MCP endpoint, can be revoked, and resets when the plugin is updated. The browser runs the approved action itself, so the client must not repeat `w_call`.
 

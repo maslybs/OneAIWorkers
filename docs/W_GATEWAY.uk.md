@@ -8,6 +8,9 @@
 w_search
 w_describe
 w_call
+w_confirmation_settings
+w_confirmation_status
+w_revoke_plugin_trust
 w_present
 w_result_read
 w_agent_run
@@ -17,9 +20,21 @@ w_agent_run
 
 Початкові вказівки MCP просять клієнт викликати `w_search` із порожнім запитом на початку розмови та на питання про можливості, встановлення або оновлення. Цей огляд є сталою заміною дії `hub_info`, яка була до версії 1.0. Він містить опис системи, встановлені плагіни користувача, записи живого каталогу, точні посилання для встановлення та посилання для оновлення.
 
-Кожна відповідь цих шести команд перевіряє оновлення OneAIWorkers. Якщо доступна новіша версія, відповідь починається з повідомлення та прямого посилання «Оновитися». Короткий кеш не дозволяє повторно завантажувати файл версії для кожної команди.
+Кожна відповідь цих дев’яти команд перевіряє оновлення OneAIWorkers. Якщо доступна новіша версія, відповідь починається з повідомлення та прямого посилання «Оновитися». Короткий кеш не дозволяє повторно завантажувати файл версії для кожної команди.
 
 Команди керування реєстром відокремлені на `/mcp/admin` і потребують прав адміністратора.
+
+## Remote MCP runtime
+
+Плагін marketplace може використовувати runtime `remote_mcp` замість окремого child Worker. Пакунок містить фіксовану публічну HTTPS MCP-адресу та політику авторизації, а не копії tool definitions.
+
+Після встановлення або підключення акаунта OneAIWorkers виконує MCP negotiation та `tools/list`. Назви, описи, input/output schemas й annotations зовнішнього MCP нормалізуються в D1/W registry, а публічний MCP surface OneAIWorkers не змінюється.
+
+Виклики проходять через OneAIWorkers policy, connection checks, confirmation, idempotency, audit і result storage перед `tools/call` на зовнішній MCP. Upstream annotations зберігаються як метадані, але не можуть самі вимкнути confirmation для зовнішньої дії.
+
+Каталоги оновлюються ліниво після завершення TTL. Підтримуються `none`, managed bearer token та OAuth із discovery, Client ID Metadata Documents, DCR fallback, PKCE і зашифрованими access/refresh tokens.
+
+Цей runtime призначений для публічного HTTPS Streamable HTTP. `stdio`, локальні subprocess та OS-залежні MCP залишаються відповідальністю desktop OneAIHUB або окремого bridge.
 
 ## Як працює пошук
 

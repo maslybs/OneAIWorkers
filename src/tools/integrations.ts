@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { APP_VERSION } from "../update";
+import { sha256Base64Url } from "../crypto";
 import {
   createConnectorAccessToken,
   credentialsReady,
@@ -29,7 +30,9 @@ import type { Env } from "../types";
 import { applyConnectorAuth, authSchema, getAuthSecretNames, getSecret, isSecretConfigured, publicAuth, redactHeaders, validateAuth, validateSafeHeaders, validateSecretName } from "./connectors/auth";
 import { buildConnectorResponse } from "./connectors/response";
 import { assertUrlTemplateInput, parseJson, parseJsonObject, redactTemplatedUrl, renderScalar, renderTemplate, renderUrlString, truncate, validateTemplatedUrl } from "./connectors/templates";
-import type { ActionRow, AuthConfig, ConnectorMode, ConnectorRow, JsonObject } from "./connectors/types";
+import type { ActionRow, AuthConfig, ConnectorMode, ConnectorRow, JsonObject, RemoteMcpAuthType } from "./connectors/types";
+import { callRemoteMcpTool, listRemoteMcpTools, type RemoteMcpTool } from "../remote-mcp/client";
+import { ensureRemoteMcpOAuthSchema, getRemoteMcpOAuthAccessToken, resetRemoteMcpAuthState } from "../remote-mcp/oauth";
 import { callNativeTool, isNativeConnectorId, nativeConnectorView } from "./native";
 
 const MAX_RESPONSE_TEXT = 24_000;
@@ -53,12 +56,15 @@ export const saveConnectorSchema = {
   connector_id: z.string().min(2).max(80).describe(biInline("Short connector id, for example crm or billing.", "Короткий id конектора, наприклад crm або billing.")),
   name: z.string().min(1).max(120),
   description: z.string().max(1000).optional(),
-  mode: z.enum(["internal", "child_worker"]).default("internal"),
+  mode: z.enum(["internal", "child_worker", "remote_mcp"]).default("internal"),
   child_worker_url: z.string().url().optional().describe(biInline("Advanced mode fallback. Protected HTTPS URL of the child Worker. Users should still call it through the main gateway by default.", "Fallback для розширеного режиму. Захищений HTTPS URL child Worker. Користувачі за замовчуванням все одно мають викликати його через основний gateway.")),
   child_worker_binding: z.string().min(2).max(80).optional().describe(biInline("Advanced production mode. Cloudflare Service Binding name for a private child Worker, for example TELEGRAM_CHILD.", "Production-режим. Назва Cloudflare Service Binding для приватного child Worker, наприклад TELEGRAM_CHILD.")),
   child_worker_token_secret: z.string().min(2).max(80).optional().describe(biInline("Secret name that stores the internal token for the child Worker URL/binding, if the child requires it.", "Назва secret, де зберігається внутрішній token для child Worker URL/binding, якщо child його вимагає.")),
   child_worker_token_credential: z.string().min(2).max(80).optional().describe(biInline("Managed encrypted credential key for an installed child Worker.", "Ключ зашифрованого службового значення для встановленого дочірнього Worker.")),
-  actions: z.array(actionSchema).min(1).max(50).describe(biInline("Actions exposed by this connector.", "Дії, які надає цей конектор.")),
+  remote_mcp_url: z.string().url().optional().describe(biInline("Fixed HTTPS endpoint of a remote MCP server using Streamable HTTP.", "Фіксована HTTPS-адреса зовнішнього MCP server зі Streamable HTTP.")),
+  remote_mcp_auth_type: z.enum(["none", "bearer", "oauth"]).default("none"),
+  remote_mcp_token_credential: z.string().min(2).max(80).optional().describe(biInline("Managed encrypted credential key containing a bearer/access token for the remote MCP server.", "Ключ зашифрованого credential з bearer/access token для зовнішнього MCP server.")),
+  actions: z.array(actionSchema).max(50).default([]).describe(biInline("Static actions for internal/child_worker connectors. Remote MCP actions are discovered automatically from tools/list.", "Статичні дії для internal/child_worker конекторів. Remote MCP actions автоматично читаються через tools/list.")),
 };
 
 export const listConnectorsSchema = {
@@ -192,7 +198,7 @@ export async function listConnectorMcpTools(env: Env): Promise<ConnectorMcpTool[
     const destructive = isDestructiveConnectorAction(row);
     return {
       tool_name: toolName,
-      title: `${row.connector_name}: ${humanizeActionName(row.action_name)}`,
+      title: row.title || `${row.connector_name}: ${humanizeActionName(row.action_name)}`,
       description: buildConnectorToolDescription(row, readOnly, destructive),
       connector_id: row.connector_id,
       connector_name: row.connector_name,
@@ -220,6 +226,15 @@ export async function ensureConnectorSchema(env: Env): Promise<void> {
           child_worker_binding TEXT,
           child_worker_token_secret TEXT,
           child_worker_token_credential TEXT,
+          remote_mcp_url TEXT,
+          remote_mcp_auth_type TEXT,
+          remote_mcp_token_credential TEXT,
+          remote_mcp_protocol_version TEXT,
+          remote_mcp_catalog_hash TEXT,
+          remote_mcp_catalog_ttl_ms INTEGER,
+          remote_mcp_cache_scope TEXT,
+          remote_mcp_last_sync_at INTEGER,
+          remote_mcp_next_sync_at INTEGER,
           enabled INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
@@ -227,6 +242,7 @@ export async function ensureConnectorSchema(env: Env): Promise<void> {
         `CREATE TABLE IF NOT EXISTS connector_actions (
           connector_id TEXT NOT NULL,
           action_name TEXT NOT NULL,
+          title TEXT,
           description TEXT,
           method TEXT NOT NULL,
           url TEXT NOT NULL,
@@ -235,6 +251,12 @@ export async function ensureConnectorSchema(env: Env): Promise<void> {
           query_json TEXT NOT NULL,
           body_template_json TEXT,
           input_schema_json TEXT,
+          output_schema_json TEXT,
+          annotations_json TEXT,
+          remote_tool_name TEXT,
+          read_only_override INTEGER,
+          destructive_override INTEGER,
+          idempotent_override INTEGER,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
           PRIMARY KEY (connector_id, action_name)
@@ -252,6 +274,22 @@ export async function ensureConnectorSchema(env: Env): Promise<void> {
       for (const sql of statements) await db.prepare(sql).run();
       await ensureColumn(db, "connectors", "child_worker_binding", "TEXT");
       await ensureColumn(db, "connectors", "child_worker_token_credential", "TEXT");
+      await ensureColumn(db, "connectors", "remote_mcp_url", "TEXT");
+      await ensureColumn(db, "connectors", "remote_mcp_auth_type", "TEXT");
+      await ensureColumn(db, "connectors", "remote_mcp_token_credential", "TEXT");
+      await ensureColumn(db, "connectors", "remote_mcp_protocol_version", "TEXT");
+      await ensureColumn(db, "connectors", "remote_mcp_catalog_hash", "TEXT");
+      await ensureColumn(db, "connectors", "remote_mcp_catalog_ttl_ms", "INTEGER");
+      await ensureColumn(db, "connectors", "remote_mcp_cache_scope", "TEXT");
+      await ensureColumn(db, "connectors", "remote_mcp_last_sync_at", "INTEGER");
+      await ensureColumn(db, "connectors", "remote_mcp_next_sync_at", "INTEGER");
+      await ensureColumn(db, "connector_actions", "title", "TEXT");
+      await ensureColumn(db, "connector_actions", "output_schema_json", "TEXT");
+      await ensureColumn(db, "connector_actions", "annotations_json", "TEXT");
+      await ensureColumn(db, "connector_actions", "remote_tool_name", "TEXT");
+      await ensureColumn(db, "connector_actions", "read_only_override", "INTEGER");
+      await ensureColumn(db, "connector_actions", "destructive_override", "INTEGER");
+      await ensureColumn(db, "connector_actions", "idempotent_override", "INTEGER");
     })().catch((error) => {
       schemaReady = null;
       throw error;
@@ -335,6 +373,8 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
       "ID віртуальних системних конекторів зарезервовані OneAIWorkers і не можуть бути перезаписані.",
     ));
   }
+  const previousConnector = await db.prepare("SELECT * FROM connectors WHERE connector_id = ?")
+    .bind(connectorId).first<ConnectorRow>();
   const now = nowSeconds();
   const mode = args.mode || "internal";
   if (mode === "child_worker") validateChildWorkerConfig(
@@ -343,10 +383,23 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
     args.child_worker_token_secret,
     args.child_worker_token_credential,
   );
+  if (mode === "remote_mcp") {
+    validateRemoteMcpConfig(args.remote_mcp_url, args.remote_mcp_auth_type, args.remote_mcp_token_credential);
+    if (args.actions.length) throw new Error(biInline(
+      "Remote MCP actions are discovered automatically. Do not provide static actions.",
+      "Дії Remote MCP визначаються автоматично. Не передавайте статичні actions.",
+    ));
+  } else if (!args.actions.length) {
+    throw new Error(biInline("At least one action is required.", "Потрібна щонайменше одна action."));
+  }
 
   const statements: D1PreparedStatement[] = [db.prepare(
-    `INSERT INTO connectors (connector_id, name, description, mode, child_worker_url, child_worker_binding, child_worker_token_secret, child_worker_token_credential, enabled, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `INSERT INTO connectors (
+       connector_id, name, description, mode,
+       child_worker_url, child_worker_binding, child_worker_token_secret, child_worker_token_credential,
+       remote_mcp_url, remote_mcp_auth_type, remote_mcp_token_credential,
+       enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
      ON CONFLICT(connector_id) DO UPDATE SET
        name = excluded.name,
        description = excluded.description,
@@ -355,6 +408,9 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
        child_worker_binding = excluded.child_worker_binding,
        child_worker_token_secret = excluded.child_worker_token_secret,
        child_worker_token_credential = excluded.child_worker_token_credential,
+       remote_mcp_url = excluded.remote_mcp_url,
+       remote_mcp_auth_type = excluded.remote_mcp_auth_type,
+       remote_mcp_token_credential = excluded.remote_mcp_token_credential,
        enabled = 1,
        updated_at = excluded.updated_at`,
   ).bind(
@@ -366,6 +422,9 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
     args.child_worker_binding || null,
     args.child_worker_token_secret || null,
     args.child_worker_token_credential || null,
+    args.remote_mcp_url || null,
+    args.remote_mcp_auth_type || "none",
+    args.remote_mcp_token_credential || null,
     now,
     now,
   )];
@@ -376,18 +435,53 @@ export async function saveConnector(env: Env, args: z.infer<z.ZodObject<typeof s
   ).bind(crypto.randomUUID(), connectorId, null, "save_connector", 1, `Saved ${args.actions.length} actions`, now));
 
   await db.batch(statements);
+  const remoteAuthChanged = Boolean(previousConnector) &&
+    (previousConnector?.mode === "remote_mcp" || mode === "remote_mcp") && (
+      previousConnector?.mode !== mode ||
+      previousConnector?.remote_mcp_url !== (args.remote_mcp_url || null) ||
+      (previousConnector?.remote_mcp_auth_type || "none") !== (args.remote_mcp_auth_type || "none") ||
+      previousConnector?.remote_mcp_token_credential !== (args.remote_mcp_token_credential || null)
+    );
+  if (remoteAuthChanged) {
+    await resetRemoteMcpAuthState(env, connectorId, previousConnector?.remote_mcp_token_credential);
+    const nextCredential = args.remote_mcp_token_credential || null;
+    if (nextCredential && nextCredential !== previousConnector?.remote_mcp_token_credential) {
+      await resetRemoteMcpAuthState(env, connectorId, nextCredential);
+    }
+  }
+  let remoteSync: Record<string, unknown> | null = null;
+  if (mode === "remote_mcp") {
+    try {
+      remoteSync = await syncRemoteMcpConnector(env, connectorId);
+    } catch (error) {
+      remoteSync = {
+        ok: false,
+        connection_required: (args.remote_mcp_auth_type || "none") !== "none",
+        error: redactSensitiveText(error instanceof Error ? error.message : String(error)),
+      };
+      await markRegistryDirty(env);
+    }
+  } else {
+    await markRegistryDirty(env);
+  }
   return {
     ok: true,
     connector_id: connectorId,
-    actions: args.actions.length,
+    actions: mode === "remote_mcp" && remoteSync?.ok === true ? Number(remoteSync.tool_count || 0) : args.actions.length,
     mode,
-    tool_names: args.actions.map((action) => `${toolNamePart(connectorId)}_${toolNamePart(action.name)}`),
+    tool_names: mode === "remote_mcp" ? [] : args.actions.map((action) => `${toolNamePart(connectorId)}_${toolNamePart(action.name)}`),
+    ...(remoteSync ? { remote_mcp_sync: remoteSync } : {}),
     stable_gateway_ready: true,
     refresh_required_for_shortcut_tools_only: true,
-    next_step: biInline(
-      "Use list_connectors and call_connector_tool immediately. Refreshing the MCP tool list is optional and only adds top-level shortcut tools.",
-      "Одразу використовуйте list_connectors і call_connector_tool. Оновлення списку MCP-команд необов’язкове й лише додає окремі короткі команди.",
-    ),
+    next_step: mode === "remote_mcp"
+      ? biInline(
+          "Remote MCP tools are synchronized into the stable gateway automatically after the connection is available.",
+          "Remote MCP tools автоматично синхронізуються у stable gateway після доступності connection.",
+        )
+      : biInline(
+          "Use list_connectors and call_connector_tool immediately. Refreshing the MCP tool list is optional and only adds top-level shortcut tools.",
+          "Одразу використовуйте list_connectors і call_connector_tool. Оновлення списку MCP-команд необов’язкове й лише додає окремі короткі команди.",
+        ),
   };
 }
 
@@ -463,13 +557,14 @@ export async function getPluginCredentialDefinition(env: Env, connectorId: strin
   ).bind(normalized).all<ActionRow>();
   const installed = await getInstalledPackage(env, normalized);
   const marketplaceFields = installed ? parseStoredCredentialFields(installed.credential_fields_json) : [];
+  const remoteFields = remoteMcpCredentialFields(connector);
   const inferredFields = inferCredentialFields(actions.results || []);
-  const fields = mergeCredentialFields(marketplaceFields, inferredFields);
+  const fields = mergeCredentialFields(mergeCredentialFields(marketplaceFields, remoteFields), inferredFields);
   return {
     connector_id: normalized,
     name: connector.name,
     fields,
-    source: marketplaceFields.length ? "marketplace" : inferredFields.length ? "manifest" : "none",
+    source: marketplaceFields.length ? "marketplace" : remoteFields.length || inferredFields.length ? "manifest" : "none",
   };
 }
 
@@ -540,6 +635,34 @@ export async function verifyPluginConnection(env: Env, connectorId: string) {
   }
 
   const db = getDb(env);
+  const connector = await db.prepare("SELECT * FROM connectors WHERE connector_id = ? AND enabled = 1")
+    .bind(normalized).first<ConnectorRow>();
+  if (connector?.mode === "remote_mcp") {
+    try {
+      const synced = await syncRemoteMcpConnector(env, normalized);
+      await setPluginConnectionHealth(env, normalized, { status: "active", httpStatus: 200 });
+      return {
+        ok: true,
+        plugin_id: normalized,
+        verification: "active",
+        tool_count: synced.tool_count,
+        protocol_version: synced.protocol_version,
+        message: biInline("Remote MCP connection verified and tool catalog synchronized.", "Remote MCP connection перевірено, каталог tools синхронізовано."),
+      };
+    } catch (error) {
+      const message = redactSensitiveText(error instanceof Error ? error.message : String(error));
+      const httpStatus = remoteMcpHttpStatus(message);
+      await setPluginConnectionHealth(env, normalized, { status: "error", httpStatus, message });
+      return {
+        ok: false,
+        plugin_id: normalized,
+        verification: "error",
+        http_status: httpStatus,
+        message,
+      };
+    }
+  }
+
   const actions = await db.prepare(
     "SELECT * FROM connector_actions WHERE connector_id = ? ORDER BY action_name",
   ).bind(normalized).all<ActionRow>();
@@ -804,6 +927,7 @@ export async function deletePlugins(env: Env, args: z.infer<z.ZodObject<typeof d
   await ensureConnectorSchema(env);
   await ensureMarketplaceSchema(env);
   await ensureCredentialSchema(env);
+  await ensureRemoteMcpOAuthSchema(env);
   const existing: string[] = [];
   for (const pluginId of pluginIds) {
     const row = await db.prepare("SELECT connector_id FROM connectors WHERE connector_id = ?")
@@ -818,6 +942,8 @@ export async function deletePlugins(env: Env, args: z.infer<z.ZodObject<typeof d
     statements.push(db.prepare("DELETE FROM connector_credentials WHERE connector_id = ?").bind(pluginId));
     statements.push(db.prepare("DELETE FROM connector_access_tokens WHERE connector_id = ?").bind(pluginId));
     statements.push(db.prepare("DELETE FROM plugin_connection_health WHERE connector_id = ?").bind(pluginId));
+    statements.push(db.prepare("DELETE FROM remote_mcp_oauth_clients WHERE connector_id = ?").bind(pluginId));
+    statements.push(db.prepare("DELETE FROM remote_mcp_oauth_states WHERE connector_id = ?").bind(pluginId));
     statements.push(db.prepare(
       "INSERT INTO connector_audit_log (id, connector_id, action_name, event, ok, message, created_at) VALUES (?, ?, NULL, 'delete_plugin', 1, 'Deleted plugin and stored settings', ?)",
     ).bind(crypto.randomUUID(), pluginId, nowSeconds()));
@@ -927,6 +1053,14 @@ export async function callConnectorTool(
     return withLiveGatewayMetadata(childResult, env);
   }
 
+  if (connector.mode === "remote_mcp") {
+    const remoteResult = await callRemoteMcpConnector(env, connector, action, args.input || {}, dryRun);
+    if (!dryRun) await recordPluginConnectionResult(env, connectorId, remoteResult);
+    await audit(db, connectorId, actionName, dryRun ? "dry_run_remote_mcp" : "call_remote_mcp", Boolean(remoteResult.ok),
+      `MCP ${connector.remote_mcp_url || "[missing]"}#${action.remote_tool_name || action.action_name}`);
+    return withLiveGatewayMetadata(remoteResult, env);
+  }
+
   const result = await callInternalAction(env, action, args.input || {}, dryRun, options.preserveFullResponse);
   if (!dryRun) await recordPluginConnectionResult(env, connectorId, result);
   await audit(db, connectorId, actionName, args.dry_run ? "dry_run_action" : "call_action", true, `${action.method} ${action.url}`);
@@ -1029,6 +1163,275 @@ function buildRequestBody(action: ActionRow, input: JsonObject, method: string, 
   return typeof rendered === "string" ? rendered : JSON.stringify(rendered);
 }
 
+const REMOTE_MCP_CATALOG_TTL_SECONDS = 6 * 60 * 60;
+const REMOTE_MCP_REFRESH_RETRY_MS = 15 * 60 * 1000;
+const remoteMcpRefreshRetryAfter = new Map<string, number>();
+
+export async function refreshStaleRemoteMcpConnectors(
+  env: Env,
+  options: { max?: number } = {},
+): Promise<{ attempted: number; refreshed: number; failed: number }> {
+  if (!env.OAUTH_DB) return { attempted: 0, refreshed: 0, failed: 0 };
+  await ensureConnectorSchema(env);
+  await ensureCredentialSchema(env);
+  const db = getDb(env);
+  const max = Math.max(0, Math.min(5, Math.trunc(options.max ?? 1)));
+  if (!max) return { attempted: 0, refreshed: 0, failed: 0 };
+  const now = nowSeconds();
+  const rows = await db.prepare(
+    `SELECT c.connector_id
+     FROM connectors c
+     LEFT JOIN plugin_connection_health h ON h.connector_id = c.connector_id
+     WHERE c.enabled = 1
+       AND c.mode = 'remote_mcp'
+       AND (c.remote_mcp_next_sync_at IS NULL OR c.remote_mcp_next_sync_at <= ?)
+       AND (COALESCE(c.remote_mcp_auth_type, 'none') = 'none' OR h.status = 'active')
+     ORDER BY COALESCE(c.remote_mcp_next_sync_at, 0), c.connector_id
+     LIMIT ?`,
+  ).bind(now, max * 4).all<{ connector_id: string }>();
+
+  let attempted = 0;
+  let refreshed = 0;
+  let failed = 0;
+  const nowMs = Date.now();
+  for (const row of rows.results || []) {
+    if (attempted >= max) break;
+    const connectorId = row.connector_id;
+    if ((remoteMcpRefreshRetryAfter.get(connectorId) || 0) > nowMs) continue;
+    attempted += 1;
+    remoteMcpRefreshRetryAfter.set(connectorId, nowMs + REMOTE_MCP_REFRESH_RETRY_MS);
+    try {
+      await syncRemoteMcpConnector(env, connectorId);
+      remoteMcpRefreshRetryAfter.delete(connectorId);
+      refreshed += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { attempted, refreshed, failed };
+}
+
+export async function syncRemoteMcpConnector(env: Env, connectorIdRaw: string) {
+  const connectorId = normalizeKey(connectorIdRaw);
+  const db = getDb(env);
+  await ensureConnectorSchema(env);
+  const connector = await db.prepare("SELECT * FROM connectors WHERE connector_id = ? AND enabled = 1")
+    .bind(connectorId).first<ConnectorRow>();
+  if (!connector || connector.mode !== "remote_mcp") {
+    throw new Error(biInline("Remote MCP connector not found.", "Remote MCP конектор не знайдено."));
+  }
+  validateRemoteMcpConfig(connector.remote_mcp_url || undefined, connector.remote_mcp_auth_type || "none", connector.remote_mcp_token_credential || undefined);
+  const accessToken = await resolveRemoteMcpAccessToken(env, connector);
+  const catalog = await listRemoteMcpTools({ serverUrl: connector.remote_mcp_url as string, accessToken });
+  if (catalog.tools.length > 500) {
+    throw new Error(biInline(
+      `Remote MCP exposes ${catalog.tools.length} tools; the current safety limit is 500.`,
+      `Remote MCP надає ${catalog.tools.length} tools; поточний safety limit — 500.`,
+    ));
+  }
+
+  const names = new Set<string>();
+  const seenRemoteNames = new Set<string>();
+  const now = nowSeconds();
+  const orderedTools = [...catalog.tools].sort((left, right) => left.name.localeCompare(right.name));
+  const statements: D1PreparedStatement[] = [
+    db.prepare("DELETE FROM connector_actions WHERE connector_id = ?").bind(connectorId),
+  ];
+  for (const tool of orderedTools) {
+    if (seenRemoteNames.has(tool.name)) throw new Error(`Remote MCP returned duplicate tool name: ${tool.name}`);
+    seenRemoteNames.add(tool.name);
+    const actionName = stableRemoteActionName(tool.name, names);
+    statements.push(prepareRemoteMcpAction(db, connector, actionName, tool, now));
+  }
+
+  const catalogHash = await sha256Base64Url(JSON.stringify(orderedTools.map((tool) => ({
+    name: tool.name,
+    title: tool.title || null,
+    description: tool.description || null,
+    inputSchema: tool.inputSchema || null,
+    outputSchema: tool.outputSchema || null,
+    annotations: tool.annotations || null,
+  }))));
+  const advertisedTtlMs = typeof catalog.ttlMs === "number" && Number.isFinite(catalog.ttlMs) && catalog.ttlMs >= 0
+    ? Math.trunc(catalog.ttlMs)
+    : null;
+  const refreshAfterSeconds = Math.max(
+    5 * 60,
+    Math.min(24 * 60 * 60, Math.ceil((advertisedTtlMs ?? REMOTE_MCP_CATALOG_TTL_SECONDS * 1000) / 1000)),
+  );
+  const nextSyncAt = now + refreshAfterSeconds;
+  statements.push(db.prepare(
+    `UPDATE connectors
+     SET remote_mcp_protocol_version = ?, remote_mcp_catalog_hash = ?, remote_mcp_catalog_ttl_ms = ?,
+         remote_mcp_cache_scope = ?, remote_mcp_last_sync_at = ?, remote_mcp_next_sync_at = ?, updated_at = ?
+     WHERE connector_id = ?`,
+  ).bind(
+    catalog.protocolVersion,
+    catalogHash,
+    advertisedTtlMs,
+    catalog.cacheScope || null,
+    now,
+    nextSyncAt,
+    now,
+    connectorId,
+  ));
+  statements.push(db.prepare(
+    "INSERT INTO connector_audit_log (id, connector_id, action_name, event, ok, message, created_at) VALUES (?, ?, NULL, 'sync_remote_mcp', 1, ?, ?)",
+  ).bind(crypto.randomUUID(), connectorId, `Synced ${orderedTools.length} remote MCP tools`, now));
+  await db.batch(statements);
+  await markRegistryDirty(env);
+  return {
+    ok: true,
+    connector_id: connectorId,
+    protocol_version: catalog.protocolVersion,
+    tool_count: orderedTools.length,
+    catalog_hash: catalogHash,
+    catalog_ttl_ms: advertisedTtlMs,
+    cache_scope: catalog.cacheScope || null,
+    next_sync_at: nextSyncAt,
+  };
+}
+
+async function callRemoteMcpConnector(
+  env: Env,
+  connector: ConnectorRow,
+  action: ActionRow,
+  input: JsonObject,
+  dryRun: boolean,
+) {
+  validateRemoteMcpConfig(connector.remote_mcp_url || undefined, connector.remote_mcp_auth_type || "none", connector.remote_mcp_token_credential || undefined);
+  const toolName = action.remote_tool_name || action.action_name;
+  const endpoint = assertSafeOutboundUrl(connector.remote_mcp_url as string);
+  if (dryRun) {
+    return {
+      ok: true,
+      dry_run: true,
+      invocation: "remote_mcp",
+      server_url: redactUrlForOutput(endpoint),
+      tool_name: toolName,
+      arguments: redactSensitiveValue(input),
+    };
+  }
+  try {
+    const accessToken = await resolveRemoteMcpAccessToken(env, connector);
+    const result = await callRemoteMcpTool({ serverUrl: endpoint.toString(), accessToken }, toolName, input);
+    return {
+      ok: true,
+      invocation: "remote_mcp",
+      server_url: redactUrlForOutput(endpoint),
+      tool_name: toolName,
+      result,
+    };
+  } catch (error) {
+    const message = redactSensitiveText(error instanceof Error ? error.message : String(error));
+    return {
+      ok: false,
+      invocation: "remote_mcp",
+      server_url: redactUrlForOutput(endpoint),
+      tool_name: toolName,
+      http_status: remoteMcpHttpStatus(message),
+      error: { message },
+    };
+  }
+}
+
+async function resolveRemoteMcpAccessToken(env: Env, connector: ConnectorRow): Promise<string | null> {
+  const authType = (connector.remote_mcp_auth_type || "none") as RemoteMcpAuthType;
+  if (authType === "none") return null;
+  if (authType === "oauth") return getRemoteMcpOAuthAccessToken(env, connector);
+  const key = connector.remote_mcp_token_credential?.trim();
+  if (!key) throw new Error(biInline("Remote MCP connection is not configured.", "Remote MCP connection не налаштований."));
+  if (!env.CREDENTIALS_MASTER_KEY) throw new Error(biInline("Encrypted credential storage is unavailable.", "Зашифроване сховище credentials недоступне."));
+  const credentials = await loadCredentialProfile(env, connector.connector_id, "user");
+  const token = credentials[key]?.trim();
+  if (!token) throw new Error(biInline("Remote MCP access token is missing. Open plugin settings and connect the account.", "Немає access token для Remote MCP. Відкрийте налаштування плагіна та підключіть акаунт."));
+  return token;
+}
+
+function prepareRemoteMcpAction(
+  db: D1Database,
+  connector: ConnectorRow,
+  actionName: string,
+  tool: RemoteMcpTool,
+  now: number,
+): D1PreparedStatement {
+  const annotations = tool.annotations || {};
+  return db.prepare(
+    `INSERT INTO connector_actions
+       (connector_id, action_name, title, description, method, url, auth_json, headers_json, query_json,
+        body_template_json, input_schema_json, output_schema_json, annotations_json, remote_tool_name,
+        read_only_override, destructive_override, idempotent_override, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'MCP', ?, '{"type":"none"}', '{}', '{}', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    connector.connector_id,
+    actionName,
+    tool.title || null,
+    tool.description || null,
+    connector.remote_mcp_url || "",
+    JSON.stringify(tool.inputSchema || { type: "object", properties: {} }),
+    tool.outputSchema ? JSON.stringify(tool.outputSchema) : null,
+    JSON.stringify(annotations),
+    tool.name,
+    annotationBoolean(annotations, "readOnlyHint"),
+    annotationBoolean(annotations, "destructiveHint"),
+    annotationBoolean(annotations, "idempotentHint"),
+    now,
+    now,
+  );
+}
+
+function validateRemoteMcpConfig(
+  url: string | undefined,
+  authType: RemoteMcpAuthType | undefined,
+  tokenCredential: string | undefined,
+): void {
+  if (!url) throw new Error(biInline("remote_mcp_url is required for remote_mcp mode.", "Для режиму remote_mcp потрібен remote_mcp_url."));
+  assertSafeOutboundUrl(url);
+  const normalizedAuth = authType || "none";
+  if (!["none", "bearer", "oauth"].includes(normalizedAuth)) throw new Error("Unsupported remote MCP auth type.");
+  if (normalizedAuth !== "none") {
+    if (!tokenCredential || !/^[a-z][a-z0-9_]{1,79}$/.test(tokenCredential)) {
+      throw new Error(biInline(
+        "A managed token credential key is required for authenticated remote MCP connections.",
+        "Для authenticated Remote MCP потрібен ключ managed token credential.",
+      ));
+    }
+  }
+}
+
+function annotationBoolean(annotations: Record<string, unknown>, key: string): number | null {
+  return typeof annotations[key] === "boolean" ? (annotations[key] ? 1 : 0) : null;
+}
+
+function stableRemoteActionName(remoteName: string, used: Set<string>): string {
+  let base = normalizeKey(remoteName);
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
+  }
+  const suffix = stableShortHash(remoteName);
+  base = `${base.slice(0, Math.max(1, 110 - suffix.length))}-${suffix}`;
+  let candidate = base;
+  let index = 2;
+  while (used.has(candidate)) candidate = `${base}-${index++}`;
+  used.add(candidate);
+  return candidate;
+}
+
+function stableShortHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (const char of value) {
+    hash ^= char.codePointAt(0) || 0;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36).padStart(7, "0").slice(-7);
+}
+
+function remoteMcpHttpStatus(message: string): number | null {
+  const match = message.match(/Remote MCP HTTP\s+(\d{3})/u);
+  return match ? Number(match[1]) : null;
+}
+
 async function callChildWorkerConnector(
   env: Env,
   connector: ConnectorRow,
@@ -1118,10 +1521,12 @@ async function collectRequiredSecrets(env: Env, actions: ActionRow[], connectors
     namesByPlugin.set(action.connector_id, names);
   }
   for (const connector of connectors) {
-    if (!connector.child_worker_token_secret) continue;
     const names = namesByPlugin.get(connector.connector_id) || new Set<string>();
-    names.add(connector.child_worker_token_secret);
-    namesByPlugin.set(connector.connector_id, names);
+    if (connector.child_worker_token_secret) names.add(connector.child_worker_token_secret);
+    if (connector.mode === "remote_mcp" && connector.remote_mcp_auth_type && connector.remote_mcp_auth_type !== "none" && connector.remote_mcp_token_credential) {
+      names.add(connector.remote_mcp_token_credential);
+    }
+    if (names.size) namesByPlugin.set(connector.connector_id, names);
   }
   const output: Array<{ plugin_id: string; name: string; configured: boolean; storage: string; value: string }> = [];
   for (const connector of connectors) {
@@ -1155,6 +1560,28 @@ function parseStoredCredentialFields(value: string): CredentialField[] {
   } catch {
     return [];
   }
+}
+
+function remoteMcpCredentialFields(connector: ConnectorRow): CredentialField[] {
+  if (connector.mode !== "remote_mcp") return [];
+  const authType = (connector.remote_mcp_auth_type || "none") as RemoteMcpAuthType;
+  if (authType === "none") return [];
+  const key = connector.remote_mcp_token_credential?.trim();
+  if (!key) return [];
+  return [{
+    id: key,
+    label: authType === "oauth" ? "Remote MCP OAuth access token" : "Remote MCP bearer token",
+    label_uk: authType === "oauth" ? "OAuth access token Remote MCP" : "Bearer token Remote MCP",
+    type: "secret",
+    required: true,
+    managed: authType === "oauth",
+    help: authType === "oauth"
+      ? "Stored encrypted in D1. Automatic OAuth connection support can populate this credential."
+      : "Stored encrypted in your OneAIWorkers D1 database.",
+    help_uk: authType === "oauth"
+      ? "Зберігається зашифровано в D1. Автоматичне OAuth-підключення може заповнити цей credential."
+      : "Зберігається у зашифрованому вигляді у вашій базі D1 OneAIWorkers.",
+  }];
 }
 
 function inferCredentialFields(actions: ActionRow[]): CredentialField[] {
@@ -1252,6 +1679,14 @@ function publicConnector(row: ConnectorRow) {
     direct_child_url_available: Boolean(row.child_worker_url),
     child_worker_token_secret: row.child_worker_token_secret || null,
     managed_child_token: Boolean(row.child_worker_token_credential),
+    remote_mcp_url: row.remote_mcp_url ? redactUrlForOutput(assertSafeOutboundUrl(row.remote_mcp_url)) : null,
+    remote_mcp_auth_type: row.mode === "remote_mcp" ? row.remote_mcp_auth_type || "none" : null,
+    remote_mcp_protocol_version: row.remote_mcp_protocol_version || null,
+    remote_mcp_catalog_hash: row.remote_mcp_catalog_hash || null,
+    remote_mcp_catalog_ttl_ms: row.remote_mcp_catalog_ttl_ms ?? null,
+    remote_mcp_cache_scope: row.remote_mcp_cache_scope || null,
+    remote_mcp_last_sync_at: row.remote_mcp_last_sync_at || null,
+    remote_mcp_next_sync_at: row.remote_mcp_next_sync_at || null,
     enabled: Boolean(row.enabled),
     updated_at: row.updated_at,
   };
@@ -1290,12 +1725,16 @@ function buildConnectorToolDescription(row: ConnectorActionToolRow, readOnly: bo
 }
 
 export function isReadOnlyConnectorAction(row: ActionRow): boolean {
+  // Remote MCP annotations are untrusted hints. Never use readOnlyHint to bypass confirmation.
+  if (row.remote_tool_name) return false;
+  if (row.read_only_override != null) return Boolean(row.read_only_override);
   const name = row.action_name.toLowerCase();
   if (["GET", "HEAD", "OPTIONS"].includes(row.method.toUpperCase())) return true;
   return /^(get|list|read|fetch|check|status|info|search|lookup|whois|summary|overview|inspect|validate|test)/.test(name);
 }
 
 export function isDestructiveConnectorAction(row: ActionRow): boolean {
+  if (row.destructive_override != null) return Boolean(row.destructive_override);
   const name = row.action_name.toLowerCase();
   if (["DELETE"].includes(row.method.toUpperCase())) return true;
   return /^(delete|remove|destroy|cancel|disable|revoke|drop|purge|wipe)/.test(name);

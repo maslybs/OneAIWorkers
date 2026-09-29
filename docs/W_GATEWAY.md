@@ -8,6 +8,9 @@ The default `/mcp` endpoint uses `meta` mode and publishes only:
 w_search
 w_describe
 w_call
+w_confirmation_settings
+w_confirmation_status
+w_revoke_plugin_trust
 w_present
 w_result_read
 w_agent_run
@@ -17,7 +20,7 @@ The list stays unchanged when plugins are installed, updated, disabled, or remov
 
 The MCP initialization instructions tell the client to call an empty `w_search` at the start of a conversation and whenever the user asks about capabilities, installation, or updates. This overview is the stable replacement for the pre-1.0 `hub_info` tool. It contains the system summary, installed user plugins, live marketplace entries, exact install links, and update links.
 
-Every response from these six commands checks the OneAIWorkers update state. When a newer version exists, the response starts with an update message and the direct browser link. A short cache prevents repeated manifest downloads for every command.
+Every response from these nine commands checks the OneAIWorkers update state. When a newer version exists, the response starts with an update message and the direct browser link. A short cache prevents repeated manifest downloads for every command.
 
 Administrative registry commands are isolated on `/mcp/admin` and require administrator access.
 
@@ -45,6 +48,20 @@ If an ordinary search finds no installed operation, the gateway checks installed
 The response contains compact metadata and never contains full schemas or vectors. `w_describe` reads stored schemas for up to ten selected immutable references.
 
 The registry is not rebuilt before every search. OneAIWorkers marks it stale after a plugin install, update, disable, removal, connection change, or OneAIWorkers version change. Synchronization runs only after one of those changes.
+
+## Remote MCP runtime
+
+A marketplace plugin may use the `remote_mcp` runtime instead of deploying a separate child Worker. The package contains a fixed public HTTPS MCP endpoint and its authentication policy, not executable proxy code or copied tool definitions.
+
+After installation or account connection, OneAIWorkers performs the standard MCP handshake (`initialize`, `notifications/initialized`) and `tools/list`. Upstream tool names, titles, descriptions, input/output schemas and MCP annotations are normalized into the existing D1/W registry. Full schemas stay in the registry and are returned only through the normal describe flow; the public MCP surface remains the same six stable commands.
+
+`readOnlyHint`, `destructiveHint` and `idempotentHint` from the upstream MCP server take precedence over legacy name/HTTP heuristics. Tool calls still pass through OneAIWorkers policy, connection checks, confirmation, idempotency, audit and result-storage layers before `tools/call` is sent upstream.
+
+Remote catalogs are refreshed lazily after they become stale; search itself remains local and does not download every upstream catalog on each request. If refresh fails, the last known catalog remains available and retry is throttled.
+
+Authentication modes are `none`, managed bearer token, or OAuth. The OAuth path supports authorization-server/protected-resource discovery, Dynamic Client Registration, PKCE, encrypted access/refresh tokens and refresh-token renewal. Changing the configured MCP endpoint or auth context clears the old remote auth material so a credential is never silently reused against a different server.
+
+This runtime targets remote MCP over public HTTPS Streamable HTTP. `stdio`, local subprocess and OS-dependent MCP servers remain a desktop OneAIHUB or dedicated bridge responsibility.
 
 ## Calling an action
 

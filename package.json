@@ -1,6 +1,6 @@
 {
   "name": "oneaiworkers",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "private": false,
   "description": "A small Cloudflare Worker remote MCP server for LLM-triggered actions.",
   "type": "module",
@@ -8,17 +8,19 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --keep-vars",
-    "test": "npm run test:security && npm run test:oauth && npm run test:agents && npm run test:native-gateway && npm run test:w-gateway && npm run test:w-search && npm run test:neuron-meter && npm run test:release",
+    "test": "npm run test:security && npm run test:oauth && npm run test:agents && npm run test:native-gateway && npm run test:w-gateway && npm run test:w-search && npm run test:remote-mcp && npm run test:neuron-meter && npm run test:release",
     "test:security": "node --test scripts/security.test.mjs",
     "test:oauth": "node --test scripts/oauth-integration.test.mjs",
     "test:agents": "node --test scripts/agents.test.mjs",
     "test:native-gateway": "node --test scripts/native-gateway.test.mjs",
     "test:w-gateway": "node --test scripts/w-gateway.test.mjs",
     "test:w-search": "node --test scripts/w-search-benchmark.test.mjs",
+    "test:remote-mcp": "node --test scripts/remote-mcp.test.mjs",
     "test:neuron-meter": "node --test scripts/neuron-meter.test.mjs",
     "test:release": "npm run build:release && node --test scripts/release-bundle.test.mjs",
     "build:release": "node scripts/build-release-bundle.mjs",
     "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
     "cf-typegen": "wrangler types",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },
@@ -34,7 +36,7 @@
     "wrangler": "4.105.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "keywords": [
     "cloudflare-workers",

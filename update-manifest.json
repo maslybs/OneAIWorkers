@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "1.3.1",
+  "latest_version": "1.4.0",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 1.3.1 shows the safe, exact plugin error when an approved action cannot be completed.",
-    "uk": "OneAIWorkers 1.3.1 показує безпечну точну помилку плагіна, якщо погоджену дію не вдалося виконати."
+    "en": "OneAIWorkers 1.4.0 adds managed remote MCP servers with local discovery, encrypted bearer/OAuth credentials, catalog synchronization, and OneAIWorkers confirmation/audit controls.",
+    "uk": "OneAIWorkers 1.4.0 додає керовані зовнішні MCP-сервери з локальним пошуком, зашифрованими bearer/OAuth credentials, синхронізацією каталогу та confirmations/audit OneAIWorkers."
   }
 }

@@ -375,7 +375,7 @@ test("searches a downloaded marketplace catalog without sending the user query",
     assert.equal(result.browser_action.type, "install_plugin");
     assert.equal(result.browser_action.url, result.matches[0].install_url);
     assert.equal(result.browser_action.open_in_normal_browser, true);
-    assert.match(result.credential_next_step, /Never ask for the service key in chat/u);
+    assert.match(result.credential_next_step, /Never ask for service credentials in chat/u);
     await marketplaceHelpers.findCapability(
       { MARKETPLACE_CATALOG_URL: "https://marketplace.example/catalog" },
       "https://worker.example",
