@@ -43,6 +43,34 @@ const authHelpers = await import(pathToFileURL(path.join(outputDirectory, "auth.
 
 test.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
 
+
+test("adaptive agent broker preserves the W Gateway security boundary", () => {
+  const indexSource = fs.readFileSync(path.join(root, "src", "index.ts"), "utf8");
+  const executionSource = fs.readFileSync(path.join(root, "src", "w-gateway", "execution.ts"), "utf8");
+  const integrationsSource = fs.readFileSync(path.join(root, "src", "tools", "integrations.ts"), "utf8");
+  const clientSource = fs.readFileSync(path.join(root, "src", "agents", "client.ts"), "utf8");
+  const tokenSource = fs.readFileSync(path.join(root, "src", "agents", "broker-token.ts"), "utf8");
+
+  assert.match(indexSource, /verifyAgentBrokerToken\(env, token\)/u);
+  assert.match(indexSource, /!tool\.read_only \|\| tool\.requires_confirmation/u);
+  assert.match(indexSource, /Adaptive subagents may call only read-only tools that require no confirmation/u);
+  assert.match(indexSource, /resolveExecutableTool\(env, gatewayContext, body\.tool_ref, "execute"\)/u);
+  assert.match(executionSource, /requestContext: context/u);
+  assert.match(integrationsSource, /request_context: options\.requestContext/u);
+  assert.match(clientSource, /createAgentBrokerToken\(env, requestContext\)/u);
+  assert.match(tokenSource, /HMAC/u);
+  assert.match(tokenSource, /expires_at/u);
+});
+
+test("Jev decisions are routing signals rather than permission decisions", () => {
+  const orchestration = fs.readFileSync(path.join(root, "src", "agents", "orchestration.ts"), "utf8");
+  const indexSource = fs.readFileSync(path.join(root, "src", "index.ts"), "utf8");
+  assert.match(orchestration, /askJev/u);
+  assert.match(orchestration, /deterministicWorkers/u);
+  assert.doesNotMatch(indexSource, /noulProbability.*requires_confirmation/u);
+  assert.match(indexSource, /!tool\.read_only \|\| tool\.requires_confirmation/u);
+});
+
 test("routes protected child Worker calls through the public Cloudflare front door", () => {
   const wranglerConfig = fs.readFileSync(path.join(root, "wrangler.toml"), "utf8");
   assert.match(wranglerConfig, /compatibility_flags\s*=\s*\[[^\]]*"nodejs_compat"[^\]]*"global_fetch_strictly_public"[^\]]*\]/u);
