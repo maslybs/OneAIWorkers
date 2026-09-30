@@ -17,6 +17,10 @@ export function agentFromRow(row: AgentRow): AgentRecord {
     instructions: row.instructions,
     profile: row.profile,
     model: row.model || undefined,
+    kind: row.kind || "specialist",
+    tool_policy: row.tool_policy || "none",
+    allowed_plugin_ids: parseOptionalStringArray(row.allowed_plugin_ids_json),
+    max_tool_calls: row.max_tool_calls ?? 0,
     enabled: Boolean(row.enabled),
     max_output_tokens: row.max_output_tokens,
     temperature: row.temperature,
@@ -34,6 +38,10 @@ export function teamFromRow(row: TeamRow): TeamRecord {
     member_agent_ids: parseStringArray(row.member_agent_ids_json),
     enabled: Boolean(row.enabled),
     max_rounds: row.max_rounds,
+    strategy: row.strategy || "legacy",
+    max_parallel: row.max_parallel ?? 1,
+    review_policy: row.review_policy || "on_uncertainty",
+    primary_context_tokens: row.primary_context_tokens ?? 2_500,
     expected_input_tokens_per_call: row.expected_input_tokens_per_call,
     expected_output_tokens_per_call: row.expected_output_tokens_per_call,
     max_budget_usd: row.max_budget_usd,
@@ -53,6 +61,8 @@ export function runFromRow(row: RunRow): RunRecord {
     estimated_neurons: state.usage?.estimated_neurons ?? 0,
     reported_token_calls: state.usage?.reported_token_calls ?? 0,
     estimated_token_calls: state.usage?.estimated_token_calls ?? 0,
+    unpriced_calls: state.usage?.unpriced_calls ?? 0,
+    decision_calls: state.usage?.decision_calls ?? 0,
   };
   const estimate = JSON.parse(row.estimate_json) as TeamCostEstimate;
   estimate.billing_type ||= "workers_ai_neurons";
@@ -87,4 +97,13 @@ function parseStringArray(value: string): string[] {
     throw new Error("Invalid stored member_agent_ids_json.");
   }
   return parsed;
+}
+
+function parseOptionalStringArray(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    return parseStringArray(value);
+  } catch {
+    return [];
+  }
 }
