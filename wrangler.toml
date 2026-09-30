@@ -38,6 +38,11 @@ PLUGIN_INSTALLER_URL = "https://workers.bgdn.dev"
 # PUBLIC_BASE_URL = "https://oneaiworkers.your-subdomain.workers.dev"
 # Vector search starts only when this many visible plugins exist and simple search is uncertain.
 # W_SEMANTIC_PLUGIN_THRESHOLD = "20"
+# Optional AI Gateway used for agent third-party provider/model IDs and Workers AI observability.
+# AI_GATEWAY_ID = "oneaiworkers"
+# Optional TypeSafe System One endpoint/model. TYPESAFE_API_URL may instead point to an AI Gateway Custom Provider.
+# TYPESAFE_MODEL = "jev-latest"
+# TYPESAFE_API_URL = "https://api.typesafe.ai/v1/systemone"
 
 # Required secret. Set once with `npx wrangler secret put MCP_SHARED_SECRET` or via Dashboard as Secret.
 # MCP_SHARED_SECRET        - required; protects the OAuth connect page and shared-secret access
@@ -50,6 +55,7 @@ PLUGIN_INSTALLER_URL = "https://workers.bgdn.dev"
 # DISCORD_WEBHOOK_URL      - default Discord webhook URL
 # SLACK_WEBHOOK_URL        - default Slack webhook URL
 # DEFAULT_WEBHOOK_URL      - generic default webhook URL
+# TYPESAFE_API_KEY          - optional; enables Jev routing/verification for adaptive agents
 # CF_ACCOUNT_ID            - only needed for Worker Builder / child Workers
 # CF_API_TOKEN             - only needed for Worker Builder / child Workers
 # CF_WORKERS_DEV_SUBDOMAIN - optional, for expected child workers.dev URLs
