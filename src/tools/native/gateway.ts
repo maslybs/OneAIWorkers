@@ -82,7 +82,7 @@ export async function callNativeTool(env: Env, invocation: NativeToolInvocation)
     ok: true,
     native: true,
     action_name: tool.name,
-    result: await tool.handler(env, parsed.data),
+    result: await tool.handler(env, parsed.data, invocation.request_context),
   };
 }
 
