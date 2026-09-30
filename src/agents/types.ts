@@ -1,12 +1,24 @@
 import { z } from "zod";
-import { agentDefinitionSchema, agentProfileSchema, prioritySchema } from "./schemas";
+import {
+  agentDefinitionSchema,
+  agentKindSchema,
+  agentProfileSchema,
+  agentToolPolicySchema,
+  prioritySchema,
+  reviewPolicySchema,
+  teamStrategySchema,
+} from "./schemas";
 
 export type AgentProfile = z.infer<typeof agentProfileSchema>;
+export type AgentKind = z.infer<typeof agentKindSchema>;
+export type AgentToolPolicy = z.infer<typeof agentToolPolicySchema>;
+export type TeamStrategy = z.infer<typeof teamStrategySchema>;
+export type ReviewPolicy = z.infer<typeof reviewPolicySchema>;
 export type AgentDefinition = z.infer<typeof agentDefinitionSchema>;
 export type Priority = z.infer<typeof prioritySchema>;
 
 export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-export type RunStage = "planning" | "members" | "feedback" | "synthesis";
+export type RunStage = "planning" | "members" | "feedback" | "review" | "synthesis";
 
 export interface AgentRecord extends AgentDefinition {
   id: string;
@@ -22,11 +34,28 @@ export interface TeamRecord {
   member_agent_ids: string[];
   enabled: boolean;
   max_rounds: number;
+  strategy: TeamStrategy;
+  max_parallel: number;
+  review_policy: ReviewPolicy;
+  primary_context_tokens: number;
   expected_input_tokens_per_call: number;
   expected_output_tokens_per_call: number;
   max_budget_usd: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface EvidencePacket {
+  agent_id: string;
+  agent_name: string;
+  kind: AgentKind;
+  conclusion: string;
+  confidence: number;
+  facts: string[];
+  evidence: Array<{ source: string; detail: string; tool_ref?: string }>;
+  uncertainties: string[];
+  proposed_actions: string[];
+  needs_more_work: boolean;
 }
 
 export interface RunOutput {
@@ -35,6 +64,10 @@ export interface RunOutput {
   round: number;
   model: string;
   output: string;
+  evidence_packet?: EvidencePacket;
+  tool_calls?: number;
+  model_calls?: number;
+  gateway_log_ids?: string[];
 }
 
 export interface UsageEstimate {
@@ -44,6 +77,8 @@ export interface UsageEstimate {
   estimated_neurons: number;
   reported_token_calls: number;
   estimated_token_calls: number;
+  unpriced_calls: number;
+  decision_calls: number;
 }
 
 export interface RunStateData {
@@ -53,6 +88,17 @@ export interface RunStateData {
   steps_completed: number;
   coordinator_plan?: string;
   feedback?: string;
+  selected_agent_ids?: string[];
+  reviewer_agent_id?: string;
+  review_needed?: boolean;
+  routing?: {
+    source: "jev" | "deterministic";
+    selected_agent_ids: string[];
+    reviewer_agent_id?: string;
+    reason?: string;
+    jev_model?: string;
+    jev_error?: string;
+  };
   outputs: RunOutput[];
   usage: UsageEstimate;
 }
@@ -118,7 +164,7 @@ export interface AgentNeuronPreflight {
 
 export interface TeamCostEstimate {
   currency: "USD";
-  billing_type: "workers_ai_neurons";
+  billing_type: "workers_ai_neurons" | "mixed";
   estimated_cost_usd: number | null;
   estimated_neurons: number | null;
   maximum_neurons: number | null;
@@ -138,6 +184,10 @@ export interface AgentRow {
   instructions: string;
   profile: AgentProfile;
   model: string | null;
+  kind: AgentKind | null;
+  tool_policy: AgentToolPolicy | null;
+  allowed_plugin_ids_json: string | null;
+  max_tool_calls: number | null;
   enabled: number;
   max_output_tokens: number;
   temperature: number;
@@ -153,6 +203,10 @@ export interface TeamRow {
   member_agent_ids_json: string;
   enabled: number;
   max_rounds: number;
+  strategy: TeamStrategy | null;
+  max_parallel: number | null;
+  review_policy: ReviewPolicy | null;
+  primary_context_tokens: number | null;
   expected_input_tokens_per_call: number;
   expected_output_tokens_per_call: number;
   max_budget_usd: number | null;
@@ -181,9 +235,11 @@ export interface AgentCallResult {
   model: string;
   input_tokens: number;
   output_tokens: number;
-  estimated_cost_usd: number;
-  estimated_neurons: number;
+  estimated_cost_usd: number | null;
+  estimated_neurons: number | null;
   token_source: "local_reported_tokens" | "local_estimated_tokens";
+  billing_type: "workers_ai_neurons" | "ai_gateway_unified";
+  gateway_log_id: string | null;
 }
 
 export interface TeamCreateInput {
@@ -193,7 +249,16 @@ export interface TeamCreateInput {
   coordinator_index: number;
   enabled: boolean;
   max_rounds: number;
+  strategy: TeamStrategy;
+  max_parallel: number;
+  review_policy: ReviewPolicy;
+  primary_context_tokens: number;
   expected_input_tokens_per_call: number;
   expected_output_tokens_per_call: number;
   max_budget_usd?: number;
+}
+
+export interface AgentRunCapability {
+  token: string;
+  base_url: string;
 }
