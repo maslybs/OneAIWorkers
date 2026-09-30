@@ -656,7 +656,7 @@ function parseToolRequests(text: string): Array<{ tool_ref: string; arguments: R
 }
 
 function parseObject(text: string): Record<string, unknown> | null {
-  const cleaned = text.trim().replace(/^\`\`\`(?:json)?\s*/iu, "").replace(/\s*\`\`\`$/u, "");
+  const cleaned = text.trim().replace(/^```(?:json)?\\s*/iu, "").replace(/\\s*```$/u, "");
   try {
     const value = JSON.parse(cleaned) as unknown;
     if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
