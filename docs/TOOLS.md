@@ -2,7 +2,7 @@
 
 [Ukrainian version](TOOLS.uk.md)
 
-OneAIWorkers exposes the same six commands to ChatGPT, Claude, and every other supported MCP client.
+OneAIWorkers exposes the same nine commands to ChatGPT, Claude, and every other supported MCP client.
 
 ## `w_search`
 
@@ -30,7 +30,9 @@ Reads a bounded part of a large result stored by OneAIWorkers. The same tenant, 
 
 ## `w_agent_run`
 
-Starts an approved agent or agent team with step and budget limits. Agents use the same plugin permissions and cannot approve their own risky actions.
+Starts an approved bounded agent team with step and budget limits. New adaptive teams select only useful subagents, may use optional TypeSafe Jev for routing/review decisions, and return compact evidence intended to save primary-model context.
+
+Adaptive scouts can use only read-only W Gateway operations under the same tenant/user/endpoint permissions as the original request. They cannot execute external writes or bypass confirmation; write suggestions are returned to the primary client as proposed actions. Existing saved teams continue to work in legacy mode.
 
 ## Recommended flow
 
