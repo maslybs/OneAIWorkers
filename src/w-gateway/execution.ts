@@ -145,7 +145,7 @@ export async function wCall(env: Env, context: WRequestContext, input: WCallInpu
       input: runtimeInput,
       dry_run: false,
       confirmed: confirmationUsed || !tool.requires_confirmation,
-    }, context.baseUrl, { preserveFullResponse: true });
+    }, context.baseUrl, { preserveFullResponse: true, requestContext: context });
     const httpStatus = extractHttpStatus(rawResult);
     const safeResult = redactSensitiveValue(toPublicPluginValue(rawResult));
     const normalized = await normalizeExecutionResult(env, context, pluginResponseValue(safeResult));
