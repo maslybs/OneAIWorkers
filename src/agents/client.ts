@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { biInline } from "../i18n";
 import type { Env } from "../types";
+import type { WRequestContext } from "../w-gateway/types";
+import { createAgentBrokerToken } from "./broker-token";
 import {
   agentCreateSchema,
   agentDeleteSchema,
@@ -76,10 +78,17 @@ export async function agentTeamDelete(env: Env, args: z.infer<z.ZodObject<typeof
   );
 }
 
-export async function agentTeamStart(env: Env, args: z.infer<z.ZodObject<typeof agentTeamStartSchema>>) {
-  requireConfirmation(args.confirmed, "start the agent team and incur Workers AI usage");
+export async function agentTeamStart(
+  env: Env,
+  args: z.infer<z.ZodObject<typeof agentTeamStartSchema>>,
+  requestContext?: WRequestContext,
+) {
+  requireConfirmation(args.confirmed, "start the agent team and incur AI usage");
   const { confirmed: _confirmed, ...body } = args;
-  return managerRequest(env, "/runs", "POST", body);
+  const capability = requestContext
+    ? { broker_token: await createAgentBrokerToken(env, requestContext), broker_base_url: requestContext.baseUrl }
+    : {};
+  return managerRequest(env, "/runs", "POST", { ...body, ...capability });
 }
 
 export async function agentRunStatus(env: Env, args: z.infer<z.ZodObject<typeof agentRunStatusSchema>>) {
