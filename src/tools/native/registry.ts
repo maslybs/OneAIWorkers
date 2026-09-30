@@ -200,7 +200,7 @@ export const NATIVE_TOOLS: NativeToolDefinition[] = [
     read_only: false,
     consumes_ai: true,
     requires_confirmation: true,
-    handler: (env, args) => agentTeamStart(env, args),
+    handler: (env, args, requestContext) => agentTeamStart(env, args, requestContext),
   }),
   define("agent_run_list", "Lists durable agent runs, optionally filtered by team.", agentRunListSchema, {
     read_only: true,
