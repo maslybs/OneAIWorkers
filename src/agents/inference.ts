@@ -50,6 +50,9 @@ export async function runAgentInference(
   }
 
   if (!env.AI) throw new Error("AI binding is not configured.");
+  if (!env.AI_GATEWAY_ID) {
+    throw new Error("AI_GATEWAY_ID is required for third-party provider/model agent IDs.");
+  }
   const input = {
     messages,
     stream: false,
@@ -58,7 +61,7 @@ export async function runAgentInference(
   };
   const result = await env.AI.run(model, input, {
     gateway: {
-      id: env.AI_GATEWAY_ID || "default",
+      id: env.AI_GATEWAY_ID,
       collectLog: true,
       metadata: {
         oneaiworkers_feature: "agent",
