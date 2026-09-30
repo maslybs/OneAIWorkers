@@ -27,6 +27,7 @@ import { biInline } from "../i18n";
 import { errorMessage } from "../response";
 import { assertSafeOutboundUrl, redactSensitiveText, redactSensitiveValue, redactUrlForOutput, safeKey } from "../security";
 import type { Env } from "../types";
+import type { WRequestContext } from "../w-gateway/types";
 import { applyConnectorAuth, authSchema, getAuthSecretNames, getSecret, isSecretConfigured, publicAuth, redactHeaders, validateAuth, validateSafeHeaders, validateSecretName } from "./connectors/auth";
 import { buildConnectorResponse } from "./connectors/response";
 import { assertUrlTemplateInput, parseJson, parseJsonObject, redactTemplatedUrl, renderScalar, renderTemplate, renderUrlString, truncate, validateTemplatedUrl } from "./connectors/templates";
@@ -1010,7 +1011,7 @@ export async function callConnectorTool(
   env: Env,
   args: z.infer<z.ZodObject<typeof callConnectorToolSchema>>,
   baseUrl = "",
-  options: { preserveFullResponse?: boolean } = {},
+  options: { preserveFullResponse?: boolean; requestContext?: WRequestContext } = {},
 ) {
   const connectorId = normalizeKey(args.connector_id);
   const actionName = normalizeKey(args.action_name);
@@ -1028,6 +1029,7 @@ export async function callConnectorTool(
       input: args.input || {},
       dry_run: args.dry_run || false,
       confirmed: args.confirmed || false,
+      request_context: options.requestContext,
     }), env);
   }
 
