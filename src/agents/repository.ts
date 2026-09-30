@@ -4,6 +4,7 @@ import type {
   AgentDefinition,
   AgentRecord,
   AgentRow,
+  AgentRunCapability,
   RunRecord,
   RunRow,
   RunStatus,
@@ -35,13 +36,17 @@ export class AgentRepository {
       updated_at: now,
     };
     this.sql.exec(
-      "INSERT INTO agents (id, name, role, instructions, profile, model, enabled, max_output_tokens, temperature, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO agents (id, name, role, instructions, profile, model, kind, tool_policy, allowed_plugin_ids_json, max_tool_calls, enabled, max_output_tokens, temperature, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       record.id,
       record.name,
       record.role,
       record.instructions,
       record.profile,
       record.model ?? null,
+      record.kind,
+      record.tool_policy,
+      JSON.stringify(record.allowed_plugin_ids),
+      record.max_tool_calls,
       record.enabled ? 1 : 0,
       record.max_output_tokens,
       record.temperature,
@@ -62,12 +67,16 @@ export class AgentRepository {
       updated_at: new Date().toISOString(),
     };
     this.sql.exec(
-      "UPDATE agents SET name = ?, role = ?, instructions = ?, profile = ?, model = ?, enabled = ?, max_output_tokens = ?, temperature = ?, updated_at = ? WHERE id = ?",
+      "UPDATE agents SET name = ?, role = ?, instructions = ?, profile = ?, model = ?, kind = ?, tool_policy = ?, allowed_plugin_ids_json = ?, max_tool_calls = ?, enabled = ?, max_output_tokens = ?, temperature = ?, updated_at = ? WHERE id = ?",
       next.name,
       next.role,
       next.instructions,
       next.profile,
       next.model ?? null,
+      next.kind,
+      next.tool_policy,
+      JSON.stringify(next.allowed_plugin_ids),
+      next.max_tool_calls,
       next.enabled ? 1 : 0,
       next.max_output_tokens,
       next.temperature,
@@ -113,7 +122,7 @@ export class AgentRepository {
       updated_at: now,
     };
     this.sql.exec(
-      "INSERT INTO teams (id, name, description, coordinator_agent_id, member_agent_ids_json, enabled, max_rounds, expected_input_tokens_per_call, expected_output_tokens_per_call, max_budget_usd, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO teams (id, name, description, coordinator_agent_id, member_agent_ids_json, enabled, max_rounds, strategy, max_parallel, review_policy, primary_context_tokens, expected_input_tokens_per_call, expected_output_tokens_per_call, max_budget_usd, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       team.id,
       team.name,
       team.description,
@@ -121,6 +130,10 @@ export class AgentRepository {
       JSON.stringify(team.member_agent_ids),
       team.enabled ? 1 : 0,
       team.max_rounds,
+      team.strategy,
+      team.max_parallel,
+      team.review_policy,
+      team.primary_context_tokens,
       team.expected_input_tokens_per_call,
       team.expected_output_tokens_per_call,
       team.max_budget_usd,
@@ -145,13 +158,17 @@ export class AgentRepository {
     validateTeamMembers(next.coordinator_agent_id, next.member_agent_ids);
     for (const agentId of next.member_agent_ids) this.requireAgent(agentId);
     this.sql.exec(
-      "UPDATE teams SET name = ?, description = ?, coordinator_agent_id = ?, member_agent_ids_json = ?, enabled = ?, max_rounds = ?, expected_input_tokens_per_call = ?, expected_output_tokens_per_call = ?, max_budget_usd = ?, updated_at = ? WHERE id = ?",
+      "UPDATE teams SET name = ?, description = ?, coordinator_agent_id = ?, member_agent_ids_json = ?, enabled = ?, max_rounds = ?, strategy = ?, max_parallel = ?, review_policy = ?, primary_context_tokens = ?, expected_input_tokens_per_call = ?, expected_output_tokens_per_call = ?, max_budget_usd = ?, updated_at = ? WHERE id = ?",
       next.name,
       next.description,
       next.coordinator_agent_id,
       JSON.stringify(next.member_agent_ids),
       next.enabled ? 1 : 0,
       next.max_rounds,
+      next.strategy,
+      next.max_parallel,
+      next.review_policy,
+      next.primary_context_tokens,
       next.expected_input_tokens_per_call,
       next.expected_output_tokens_per_call,
       next.max_budget_usd,
@@ -202,6 +219,28 @@ export class AgentRepository {
       run.created_at,
       run.updated_at,
     );
+  }
+
+  saveRunCapability(runId: string, capability: AgentRunCapability): void {
+    this.sql.exec(
+      "INSERT OR REPLACE INTO run_capabilities (run_id, token, base_url, created_at) VALUES (?, ?, ?, ?)",
+      runId,
+      capability.token,
+      capability.base_url,
+      new Date().toISOString(),
+    );
+  }
+
+  runCapability(runId: string): AgentRunCapability | null {
+    const row = this.one<{ token: string; base_url: string }>(
+      "SELECT token, base_url FROM run_capabilities WHERE run_id = ?",
+      runId,
+    );
+    return row ? { token: row.token, base_url: row.base_url } : null;
+  }
+
+  clearRunCapability(runId: string): void {
+    this.sql.exec("DELETE FROM run_capabilities WHERE run_id = ?", runId);
   }
 
   requireRun(id: string): RunRecord {
@@ -260,6 +299,7 @@ export class AgentRepository {
       now,
       id,
     );
+    this.clearRunCapability(id);
   }
 
   pendingRunCount(): number {
