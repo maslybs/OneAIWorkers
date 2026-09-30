@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Env } from "../../types";
+import type { WRequestContext } from "../../w-gateway/types";
 
 export interface NativeToolDefinition {
   name: string;
@@ -8,7 +9,7 @@ export interface NativeToolDefinition {
   read_only: boolean;
   consumes_ai: boolean;
   requires_confirmation: boolean;
-  handler: (env: Env, args: any) => unknown | Promise<unknown>;
+  handler: (env: Env, args: any, requestContext?: WRequestContext) => unknown | Promise<unknown>;
 }
 
 export interface NativeToolInvocation {
@@ -16,4 +17,5 @@ export interface NativeToolInvocation {
   input: Record<string, unknown>;
   dry_run: boolean;
   confirmed: boolean;
+  request_context?: WRequestContext;
 }
