@@ -21,6 +21,25 @@ export function extractAiText(result: unknown): string {
     const value = result as Record<string, unknown>;
     if (typeof value.response === "string") return value.response;
     if (typeof value.text === "string") return value.text;
+    if (Array.isArray(value.choices) && value.choices.length) {
+      const first = value.choices[0];
+      if (first && typeof first === "object") {
+        const choice = first as Record<string, unknown>;
+        if (typeof choice.text === "string") return choice.text;
+        if (choice.message && typeof choice.message === "object") {
+          const message = choice.message as Record<string, unknown>;
+          if (typeof message.content === "string") return message.content;
+        }
+      }
+    }
+    if (Array.isArray(value.content)) {
+      const textParts = value.content.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const block = item as Record<string, unknown>;
+        return typeof block.text === "string" ? [block.text] : [];
+      });
+      if (textParts.length) return textParts.join("\n");
+    }
     if (value.result && typeof value.result === "object") {
       const nested = value.result as Record<string, unknown>;
       if (typeof nested.response === "string") return nested.response;
