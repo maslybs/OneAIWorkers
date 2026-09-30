@@ -42,7 +42,7 @@ test("proposes an adaptive token-saving team without creating or invoking agents
   assert.ok(proposal.estimate.maximum_neurons >= proposal.estimate.estimated_neurons);
   assert.equal(proposal.estimate.billing_type, "workers_ai_neurons");
   assert.match(proposal.orchestration.sequence.join(" "), /Jev/u);
-  assert.match(proposal.orchestration.stop_and_control.join(" "), /read-only|read_only/u);
+  assert.match(proposal.orchestration.sequence.join(" "), /read-only|read_only/u);
 });
 
 test("reports adaptive read-only tools, AI Gateway and optional Jev", () => {
