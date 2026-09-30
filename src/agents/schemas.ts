@@ -10,14 +10,24 @@ import {
 } from "./constants";
 
 export const agentProfileSchema = z.enum(["fast", "balanced", "reasoning", "vision", "coding", "agentic"]);
+export const agentKindSchema = z.enum(["scout", "specialist", "reviewer", "synthesizer"]);
+export const agentToolPolicySchema = z.enum(["none", "read_only"]);
+export const teamStrategySchema = z.enum(["legacy", "adaptive"]);
+export const reviewPolicySchema = z.enum(["never", "on_uncertainty", "always"]);
 export const prioritySchema = z.enum(["lowest-cost", "lowest-latency", "balanced", "highest-quality"]);
+
+const agentModelSchema = z.string().regex(/^(?:@cf\/[a-z0-9][a-z0-9._/-]*|[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._/-]*)$/i).max(200);
 
 export const agentDefinitionSchema = z.object({
   name: z.string().min(1).max(120),
   role: z.string().min(1).max(200),
   instructions: z.string().min(1).max(MAX_INSTRUCTIONS_CHARS),
   profile: agentProfileSchema.default("balanced"),
-  model: z.string().regex(/^@cf\/[a-z0-9][a-z0-9._/-]*$/i).max(200).optional(),
+  model: agentModelSchema.optional(),
+  kind: agentKindSchema.default("specialist"),
+  tool_policy: agentToolPolicySchema.default("none"),
+  allowed_plugin_ids: z.array(z.string().min(1).max(120)).max(20).default([]),
+  max_tool_calls: z.number().int().min(0).max(8).default(0),
   enabled: z.boolean().default(true),
   max_output_tokens: z.number().int().min(128).max(4_096).default(1_024),
   temperature: z.number().min(0).max(1.5).default(0.2),
@@ -54,7 +64,11 @@ export const agentUpdateSchema = {
   role: z.string().min(1).max(200).optional(),
   instructions: z.string().min(1).max(MAX_INSTRUCTIONS_CHARS).optional(),
   profile: agentProfileSchema.optional(),
-  model: z.string().regex(/^@cf\/[a-z0-9][a-z0-9._/-]*$/i).max(200).nullable().optional(),
+  model: agentModelSchema.nullable().optional(),
+  kind: agentKindSchema.optional(),
+  tool_policy: agentToolPolicySchema.optional(),
+  allowed_plugin_ids: z.array(z.string().min(1).max(120)).max(20).optional(),
+  max_tool_calls: z.number().int().min(0).max(8).optional(),
   enabled: z.boolean().optional(),
   max_output_tokens: z.number().int().min(128).max(4_096).optional(),
   temperature: z.number().min(0).max(1.5).optional(),
@@ -73,6 +87,10 @@ export const agentTeamCreateSchema = {
   coordinator_index: z.number().int().min(0).max(MAX_AGENTS - 1).default(0),
   enabled: z.boolean().default(true),
   max_rounds: z.number().int().min(1).max(MAX_ROUNDS).default(1),
+  strategy: teamStrategySchema.default("legacy"),
+  max_parallel: z.number().int().min(1).max(3).default(2),
+  review_policy: reviewPolicySchema.default("on_uncertainty"),
+  primary_context_tokens: z.number().int().min(500).max(10_000).default(2_500),
   expected_input_tokens_per_call: z.number().int().min(100).max(100_000).default(DEFAULT_INPUT_TOKENS_PER_CALL),
   expected_output_tokens_per_call: z.number().int().min(50).max(16_000).default(DEFAULT_OUTPUT_TOKENS_PER_CALL),
   max_budget_usd: z.number().min(0.0001).max(100).optional(),
@@ -95,6 +113,10 @@ export const agentTeamUpdateSchema = {
   member_agent_ids: z.array(z.string().uuid()).min(2).max(MAX_AGENTS).optional(),
   enabled: z.boolean().optional(),
   max_rounds: z.number().int().min(1).max(MAX_ROUNDS).optional(),
+  strategy: teamStrategySchema.optional(),
+  max_parallel: z.number().int().min(1).max(3).optional(),
+  review_policy: reviewPolicySchema.optional(),
+  primary_context_tokens: z.number().int().min(500).max(10_000).optional(),
   expected_input_tokens_per_call: z.number().int().min(100).max(100_000).optional(),
   expected_output_tokens_per_call: z.number().int().min(50).max(16_000).optional(),
   max_budget_usd: z.number().min(0.0001).max(100).nullable().optional(),
