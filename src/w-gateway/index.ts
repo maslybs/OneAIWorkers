@@ -1,7 +1,7 @@
 export { createWAdminServer, createWGatewayServer, registerWGatewayTools } from "./gateway";
 export { ensureWRegistryCurrent, syncWRegistry } from "./registry";
 export { wSearch } from "./search";
-export { wCall, wCallLegacyAction } from "./execution";
+export { resolveExecutableTool, wCall, wCallLegacyAction } from "./execution";
 export { readStoredResult } from "./results";
 export {
   allowAutomaticPluginActions,
