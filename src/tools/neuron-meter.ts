@@ -157,7 +157,20 @@ export async function runMeteredWorkersAi(
   const requestId = options.context?.request_id || crypto.randomUUID();
   let result: unknown;
   try {
-    result = await env.AI.run(options.model, options.input, options.ai_options);
+    const aiOptions: Record<string, unknown> = { ...(options.ai_options || {}) };
+    if (env.AI_GATEWAY_ID && !("gateway" in aiOptions)) {
+      aiOptions.gateway = {
+        id: env.AI_GATEWAY_ID,
+        collectLog: true,
+        metadata: {
+          oneaiworkers_feature: "workers_ai",
+          request_id: requestId,
+          ...(options.context?.run_id ? { run_id: options.context.run_id } : {}),
+          ...(options.context?.agent_id ? { agent_id: options.context.agent_id } : {}),
+        },
+      };
+    }
+    result = await env.AI.run(options.model, options.input, aiOptions);
   } catch (error) {
     if (isDailyNeuronLimitError(error)) {
       await recordNeuronEvent(env, {
