@@ -1,5 +1,6 @@
 export interface WorkersAiBinding {
   run(model: string, inputs: Record<string, unknown>, options?: Record<string, unknown>): Promise<unknown>;
+  aiGatewayLogId?: string;
 }
 
 export interface Env {
@@ -21,7 +22,15 @@ export interface Env {
   OAUTH_DB?: D1Database;
 
   // Native Cloudflare Workers AI binding configured as [ai] binding = "AI".
+  // The same binding can route third-party provider/model IDs through AI Gateway.
   AI?: WorkersAiBinding;
+  AI_GATEWAY_ID?: string;
+
+  // Optional TypeSafe System One / Jev decision layer. The API URL may point
+  // directly at TypeSafe or at an AI Gateway Custom Provider.
+  TYPESAFE_API_KEY?: string;
+  TYPESAFE_API_URL?: string;
+  TYPESAFE_MODEL?: string;
 
   // Optional R2 storage for W Gateway results larger than the inline MCP limit.
   W_RESULTS_BUCKET?: R2Bucket;
