@@ -19,6 +19,7 @@ import { updatePageHtml } from "./update-page";
 import { normalizeMcpToolCallRequest } from "./mcp-request";
 import { beginRemoteMcpOAuth, completeRemoteMcpOAuth, isRemoteMcpOAuthConnector, remoteMcpClientMetadata } from "./remote-mcp/oauth";
 import { isSameOriginFormRequest } from "./security";
+import { verifyAgentBrokerToken } from "./agents/broker-token";
 import { DAILY_NEURON_ALLOCATION, USD_PER_1000_NEURONS } from "./tools/neuron-meter";
 import {
   confirmationApprovalPageHtml,
@@ -47,7 +48,9 @@ import {
   createWAdminServer,
   loadConfirmationIntent,
   openConfirmationApproval,
+  resolveExecutableTool,
   wCall,
+  wSearch,
 } from "./w-gateway";
 
 export { AgentManager } from "./agents";
@@ -354,6 +357,83 @@ export default {
         return handleOAuthRevoke(request, env);
       }
 
+      if (url.pathname === "/internal/agent-broker" && request.method === "POST") {
+        const authorization = request.headers.get("authorization") || "";
+        const token = authorization.match(/^Bearer\s+(.+)$/iu)?.[1] || "";
+        const signedContext = token ? await verifyAgentBrokerToken(env, token) : null;
+        if (!signedContext || signedContext.baseUrl !== baseUrl) {
+          return json({ ok: false, error: "Invalid or expired agent broker capability." }, { status: 403 });
+        }
+        const contentLength = Number(request.headers.get("content-length") || 0);
+        if (contentLength > 64_000) return json({ ok: false, error: "Agent broker request is too large." }, { status: 413 });
+        const body = await request.json() as {
+          op?: string;
+          query?: string;
+          plugin_ids?: string[];
+          limit?: number;
+          tool_ref?: string;
+          arguments?: Record<string, unknown>;
+        };
+        const gatewayContext = { ...signedContext, baseUrl };
+
+        if (body.op === "search") {
+          const pluginIds = Array.isArray(body.plugin_ids)
+            ? body.plugin_ids.filter((item): item is string => typeof item === "string").slice(0, 20)
+            : [];
+          const result = await wSearch(env, gatewayContext, {
+            query: typeof body.query === "string" ? body.query : "",
+            limit: Math.max(1, Math.min(6, Number(body.limit || 6))),
+            filters: {
+              connected_only: true,
+              read_only: true,
+              ...(pluginIds.length ? { plugin_ids: pluginIds } : {}),
+            },
+          });
+          const rows = Array.isArray((result as { results?: unknown[] }).results)
+            ? (result as { results: Array<Record<string, unknown>> }).results
+            : [];
+          const enriched = [];
+          for (const row of rows) {
+            if (typeof row.tool_ref !== "string") continue;
+            try {
+              const tool = await resolveExecutableTool(env, gatewayContext, row.tool_ref, "describe");
+              if (!tool.read_only || tool.requires_confirmation) continue;
+              enriched.push({
+                ...row,
+                input_schema: JSON.parse(tool.input_schema_json),
+                output_schema: tool.output_schema_json ? JSON.parse(tool.output_schema_json) : null,
+              });
+            } catch {
+              // A candidate can disappear between search and describe; skip it.
+            }
+          }
+          return withoutCaching(json({
+            ok: true,
+            search_id: (result as { search_id?: string }).search_id || null,
+            results: enriched,
+          }));
+        }
+
+        if (body.op === "call") {
+          if (typeof body.tool_ref !== "string") {
+            return json({ ok: false, error: "tool_ref is required." }, { status: 400 });
+          }
+          const tool = await resolveExecutableTool(env, gatewayContext, body.tool_ref, "execute");
+          if (!tool.read_only || tool.requires_confirmation) {
+            return json({ ok: false, error: "Adaptive subagents may call only read-only tools that require no confirmation." }, { status: 403 });
+          }
+          const result = await wCall(env, gatewayContext, {
+            tool_ref: body.tool_ref,
+            arguments: body.arguments && typeof body.arguments === "object" && !Array.isArray(body.arguments)
+              ? body.arguments
+              : {},
+          });
+          return withoutCaching(json({ ok: true, result }));
+        }
+
+        return json({ ok: false, error: "Unsupported agent broker operation." }, { status: 400 });
+      }
+
       if (url.pathname === "/.well-known/oneaiworkers" && request.method === "GET") {
         return json({
           name: env.HUB_NAME || "OneAIWorkers",
@@ -367,7 +447,7 @@ export default {
           update_page: `${baseUrl}/update`,
           gateway: {
             mode: "meta",
-            public_tools: ["w_search", "w_describe", "w_call", "w_present", "w_result_read", "w_agent_run"],
+            public_tools: ["w_search", "w_describe", "w_call", "w_confirmation_settings", "w_confirmation_status", "w_revoke_plugin_trust", "w_present", "w_result_read", "w_agent_run"],
             registry_source: "D1",
             semantic_search: Boolean(env.AI),
             client_refresh_after_plugin_install: false,
