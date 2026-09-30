@@ -78,7 +78,7 @@ When a client connects, OneAIWorkers instructs it to start with an empty `w_sear
 6. `w_revoke_plugin_trust` disables remembered automatic actions for a plugin.
 7. `w_present` is reserved for visual results.
 8. `w_result_read` reads a small part of a large stored result.
-9. `w_agent_run` starts an approved agent or team with limits.
+9. `w_agent_run` starts a bounded agent team. New adaptive teams use only useful subagents, compact their evidence for the primary model, and can optionally use read-only W Gateway tools, AI Gateway models, and TypeSafe Jev routing.
 
 Permissions are applied before search and checked again before execution. For a risky action, the protected browser page offers two choices: run only that exact action, or remember automatic permission for that one plugin. Remembered permission is limited to the same user and MCP endpoint, can be revoked, and resets when the plugin is updated. The browser runs the approved action itself, so the client must not repeat `w_call`.
 
