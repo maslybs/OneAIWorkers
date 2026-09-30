@@ -49,7 +49,7 @@ export function evidencePrompt(): string {
 }
 
 function parseJsonObject(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim().replace(/^\`\`\`(?:json)?\s*/iu, "").replace(/\s*\`\`\`$/u, "");
+  const trimmed = text.trim().replace(/^```(?:json)?\\s*/iu, "").replace(/\\s*```$/u, "");
   try {
     const parsed = JSON.parse(trimmed) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
