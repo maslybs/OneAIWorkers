@@ -86,6 +86,10 @@ export class AgentManager {
         member_agent_ids: agents.map((agent) => agent.id),
         enabled: body.enabled,
         max_rounds: body.max_rounds,
+        strategy: body.strategy,
+        max_parallel: body.max_parallel,
+        review_policy: body.review_policy,
+        primary_context_tokens: body.primary_context_tokens,
         expected_input_tokens_per_call: body.expected_input_tokens_per_call,
         expected_output_tokens_per_call: body.expected_output_tokens_per_call,
         max_budget_usd: body.max_budget_usd ?? null,
@@ -122,8 +126,24 @@ export class AgentManager {
       });
     }
     if (segments.length === 1 && request.method === "POST") {
-      const body = await requestJson<{ team_id: string; task: string; max_budget_usd?: number; max_steps?: number }>(request);
-      const run = await this.orchestrator.startRun(body.team_id, body.task, body.max_budget_usd, body.max_steps);
+      const body = await requestJson<{
+        team_id: string;
+        task: string;
+        max_budget_usd?: number;
+        max_steps?: number;
+        broker_token?: string;
+        broker_base_url?: string;
+      }>(request);
+      const capability = body.broker_token && body.broker_base_url
+        ? { token: body.broker_token, base_url: body.broker_base_url }
+        : undefined;
+      const run = await this.orchestrator.startRun(
+        body.team_id,
+        body.task,
+        body.max_budget_usd,
+        body.max_steps,
+        capability,
+      );
       return responseJson({ ok: true, data: { run } }, 202);
     }
 
