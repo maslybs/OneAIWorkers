@@ -84,6 +84,8 @@ Permissions are applied before search and checked again before execution. For a 
 
 ## Add a plugin
 
+Google Workspace connects Google Drive, Docs, and Sheets. Install it from the live marketplace after updating OneAIWorkers to 1.4.1 or newer. Each user supplies their own Google Cloud OAuth client once, then signs in from the protected plugin settings page. See [Google setup](cloud-connectors/google-workspace/README.md). Keys and refresh tokens stay encrypted in the user's OneAIWorkers.
+
 Ask the MCP client for the service or result you need:
 
 ```text

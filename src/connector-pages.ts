@@ -105,7 +105,7 @@ export function connectorSetupPageHtml(
   language: Language,
   error?: string,
   saved = false,
-  options: { oauthConnectUrl?: string } = {},
+  options: { oauthConnectUrl?: string; oauthHelp?: string; submitLabel?: string } = {},
 ): string {
   const copy = language === "uk"
     ? {
@@ -154,11 +154,12 @@ export function connectorSetupPageHtml(
     <a class="button" href="${escapeHtml(options.oauthConnectUrl)}">${language === "uk" ? "Підключити акаунт через OAuth" : "Connect account with OAuth"}</a>
     <p class="safe">${language === "uk" ? "Авторизація відбувається на сайті зовнішнього сервісу. OneAIWorkers зберігає отримані токени лише у зашифрованому D1." : "Authorization happens on the external service. OneAIWorkers stores the resulting tokens only in encrypted D1."}</p>
   ` : "";
+  const oauthHelpBlock = options.oauthHelp ? `<p class="safe">${escapeHtml(options.oauthHelp)}</p>` : "";
   const formBlock = editableFields.length ? `
     <form method="post">
       <input type="hidden" name="lang" value="${language}" />
       ${controls}
-      <button class="button" type="submit">${escapeHtml(copy.save)}</button>
+      <button class="button" type="submit">${escapeHtml(options.submitLabel || copy.save)}</button>
     </form>
   ` : options.oauthConnectUrl ? "" : `<p class="safe">${language === "uk" ? "Цей плагін не потребує додаткових ключів." : "This plugin needs no additional credentials."}</p>`;
   return pageShell(language, copy.title, `
@@ -166,6 +167,7 @@ export function connectorSetupPageHtml(
     <h1>${escapeHtml(copy.title)}</h1>
     <p class="lead">${escapeHtml(copy.body)}</p>
     ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
+    ${oauthHelpBlock}
     ${oauthBlock}
     ${formBlock}
   `);

@@ -15,6 +15,7 @@ const credentialFieldSchema = z.object({
   placeholder: z.string().max(300).optional(),
   help: z.string().max(500).optional(),
   help_uk: z.string().max(500).optional(),
+  managed: z.boolean().optional(),
 });
 
 const actionSchema = z.object({

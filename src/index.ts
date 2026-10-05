@@ -42,6 +42,12 @@ import { registerInstalledConnector } from "./connector-installation";
 import { getInstalledPackage, getMarketplaceItem } from "./marketplace";
 import { getPluginCredentialDefinition, verifyPluginConnection } from "./tools/integrations";
 import {
+  beginManagedPluginOAuth,
+  completeManagedPluginOAuth,
+  isManagedPluginOAuthConnector,
+  managedPluginOAuthSetupHelp,
+} from "./plugin-oauth";
+import {
   allowAutomaticPluginActions,
   approveConfirmation,
   createWAdminServer,
@@ -249,11 +255,48 @@ export default {
         if (!(await validateConnectorSession(env, connectorId, session))) {
           return json({ ok: false, error: biInline("This settings session has expired. Ask your MCP client for a new settings link.", "Сесія налаштувань завершилася. Попросіть MCP-клієнт створити нове посилання на налаштування.") }, { status: 401 });
         }
-        if (!(await isRemoteMcpOAuthConnector(env, connectorId))) {
-          return json({ ok: false, error: biInline("This plugin does not use remote MCP OAuth.", "Цей плагін не використовує Remote MCP OAuth.") }, { status: 400 });
+        const authorizationUrl = await (
+          await isRemoteMcpOAuthConnector(env, connectorId)
+            ? beginRemoteMcpOAuth(env, baseUrl, connectorId)
+            : isManagedPluginOAuthConnector(connectorId)
+              ? beginManagedPluginOAuth(env, baseUrl, connectorId, pageLanguage(url, request))
+              : Promise.resolve(null)
+        );
+        if (!authorizationUrl) {
+          return json({ ok: false, error: biInline("This plugin does not use managed OAuth.", "Цей плагін не використовує керовану OAuth-авторизацію.") }, { status: 400 });
         }
-        const authorizationUrl = await beginRemoteMcpOAuth(env, baseUrl, connectorId);
         return Response.redirect(authorizationUrl, 303);
+      }
+
+      const managedPluginOAuthCallbackMatch = url.pathname.match(/^\/plugins\/([a-z0-9_-]+)\/oauth\/callback$/);
+      if (managedPluginOAuthCallbackMatch && request.method === "GET") {
+        const connectorId = managedPluginOAuthCallbackMatch[1];
+        const language = pageLanguage(url, request);
+        const session = readConnectorSessionCookie(request);
+        if (!(await validateConnectorSession(env, connectorId, session))) {
+          return json({ ok: false, error: biInline("This settings session has expired. Ask your MCP client for a new settings link.", "Сесія налаштувань завершилася. Попросіть MCP-клієнт створити нове посилання на налаштування.") }, { status: 401 });
+        }
+        try {
+          const completed = await completeManagedPluginOAuth(env, connectorId, url);
+          const verification = await verifyPluginConnection(env, completed.connectorId);
+          if (!verification.ok) throw new Error(verification.message || "Google Workspace verification failed.");
+          return Response.redirect(`${baseUrl}/plugins/${encodeURIComponent(completed.connectorId)}/setup?lang=${completed.language}&oauth=connected`, 303);
+        } catch (error) {
+          const definition = await getPluginCredentialDefinition(env, connectorId);
+          const existing = await loadCredentialProfile(env, connectorId, "user");
+          return new Response(connectorSetupPageHtml(
+            definition.name,
+            definition.fields,
+            existing,
+            language,
+            errorMessage(error),
+            false,
+            {
+              oauthConnectUrl: `${baseUrl}/plugins/${encodeURIComponent(connectorId)}/oauth/start?lang=${language}`,
+              oauthHelp: managedPluginOAuthSetupHelp(baseUrl, connectorId, language),
+            },
+          ), { status: 400, headers: connectorPageHeaders() });
+        }
       }
 
       if (url.pathname === "/oauth/remote-mcp/callback" && request.method === "GET") {
@@ -285,11 +328,13 @@ export default {
         const fields = definition.fields;
         const connectorName = definition.name;
         const language = pageLanguage(url, request);
-        const oauthConnectUrl = await isRemoteMcpOAuthConnector(env, connectorId)
+        const managedOAuth = isManagedPluginOAuthConnector(connectorId);
+        const existing = await loadCredentialProfile(env, connectorId, "user");
+        const oauthConnectUrl = await isRemoteMcpOAuthConnector(env, connectorId) || (managedOAuth && existing.client_id && existing.client_secret)
           ? `${baseUrl}/plugins/${encodeURIComponent(connectorId)}/oauth/start?lang=${language}`
           : undefined;
+        const oauthHelp = managedPluginOAuthSetupHelp(baseUrl, connectorId, language);
         const oauthConnected = url.searchParams.get("oauth") === "connected";
-        const existing = await loadCredentialProfile(env, connectorId, "user");
 
         if (request.method === "POST") {
           if (!isSameOriginFormRequest(request, baseUrl)) {
@@ -299,25 +344,33 @@ export default {
             const form = await request.formData();
             const values = sanitizeSubmittedCredentials(form, fields, existing);
             await storeCredentialProfile(env, connectorId, "user", values);
+            if (managedOAuth) {
+              const authorizationUrl = await beginManagedPluginOAuth(env, baseUrl, connectorId, language);
+              return Response.redirect(authorizationUrl, 303);
+            }
             const verification = await verifyPluginConnection(env, connectorId);
             if (!verification.ok) {
-              return new Response(connectorSetupPageHtml(connectorName, fields, values, language, verification.message, false, { oauthConnectUrl }), {
+              return new Response(connectorSetupPageHtml(connectorName, fields, values, language, verification.message, false, { oauthConnectUrl, oauthHelp }), {
                 status: 400,
                 headers: connectorPageHeaders(),
               });
             }
-            return new Response(connectorSetupPageHtml(connectorName, fields, values, language, undefined, true, { oauthConnectUrl }), {
+            return new Response(connectorSetupPageHtml(connectorName, fields, values, language, undefined, true, { oauthConnectUrl, oauthHelp }), {
               headers: connectorPageHeaders(),
             });
           } catch (error) {
-            return new Response(connectorSetupPageHtml(connectorName, fields, existing, language, errorMessage(error), false, { oauthConnectUrl }), {
+            return new Response(connectorSetupPageHtml(connectorName, fields, existing, language, errorMessage(error), false, { oauthConnectUrl, oauthHelp }), {
               status: 400,
               headers: connectorPageHeaders(),
             });
           }
         }
 
-        return new Response(connectorSetupPageHtml(connectorName, fields, existing, language, undefined, oauthConnected, { oauthConnectUrl }), {
+        return new Response(connectorSetupPageHtml(connectorName, fields, existing, language, undefined, oauthConnected, {
+          oauthConnectUrl,
+          oauthHelp,
+          submitLabel: managedOAuth ? (language === "uk" ? "Зберегти й підключити Google" : "Save and connect Google") : undefined,
+        }), {
           headers: connectorPageHeaders(),
         });
       }

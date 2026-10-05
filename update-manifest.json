@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "latest_version": "1.4.0",
+  "latest_version": "1.4.1",
   "minimum_supported_version": "0.6.0",
   "critical": false,
   "message": {
-    "en": "OneAIWorkers 1.4.0 adds managed remote MCP servers with local discovery, encrypted bearer/OAuth credentials, catalog synchronization, and OneAIWorkers confirmation/audit controls.",
-    "uk": "OneAIWorkers 1.4.0 додає керовані зовнішні MCP-сервери з локальним пошуком, зашифрованими bearer/OAuth credentials, синхронізацією каталогу та confirmations/audit OneAIWorkers."
+    "en": "Adds Google Workspace plugin sign-in through the protected settings page, with encrypted refresh tokens and automatic access renewal. A personal Google Cloud OAuth client is required.",
+    "uk": "Додає підключення Google Workspace через захищені налаштування плагіна, шифрування довготривалого ключа та автоматичне поновлення доступу. Потрібні власні налаштування застосунку в Google Cloud."
   }
 }

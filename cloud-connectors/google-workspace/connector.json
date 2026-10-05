@@ -1,0 +1,102 @@
+{
+  "id": "google-workspace",
+  "name": "Google Workspace for OneAIWorkers",
+  "description": "Protected Google Drive, Docs, and Sheets plugin with browser OAuth and automatic access-token refresh.",
+  "version": "0.1.0",
+  "runtime": "cloudflare-worker",
+  "worker": {
+    "entry": "index.mjs",
+    "compatibility_date": "2026-10-04"
+  },
+  "permissions": ["network"],
+  "requirements": [
+    "Cloudflare account",
+    "OneAIWorkers 1.4.1 or newer",
+    "Google Cloud OAuth Web application client",
+    "Google Drive, Docs, and Sheets APIs enabled"
+  ],
+  "capabilities": [
+    "find, read, upload, organize, copy, share, and delete Google Drive files",
+    "create, read, search, and edit Google Docs documents",
+    "read, append, update, clear, and format Google Sheets ranges",
+    "refresh short-lived Google access tokens automatically without exposing the refresh token"
+  ],
+  "use_cases": [
+    "find and summarize files from Google Drive",
+    "create reports and shared documents from a chat",
+    "read and update operational spreadsheets",
+    "keep Google access working between chat sessions"
+  ],
+  "aliases": [
+    "google workspace", "google drive", "google docs", "google sheets", "documents", "spreadsheets",
+    "гугл диск", "гугл документи", "гугл таблиці", "документи", "таблиці"
+  ],
+  "credential_fields": [
+    {
+      "id": "client_id",
+      "label": "Google OAuth Client ID",
+      "label_uk": "Google OAuth Client ID",
+      "type": "text",
+      "required": true,
+      "placeholder": "123456789.apps.googleusercontent.com",
+      "help": "Create an OAuth client of type Web application in Google Cloud. The setup page shows the exact redirect URI.",
+      "help_uk": "Створіть OAuth-клієнт типу Web application у Google Cloud. Сторінка налаштування покаже точну адресу повернення."
+    },
+    {
+      "id": "client_secret",
+      "label": "Google OAuth Client Secret",
+      "label_uk": "Google OAuth Client Secret",
+      "type": "secret",
+      "required": true,
+      "help": "Stored only in encrypted D1 on your OneAIWorkers.",
+      "help_uk": "Зберігається лише у зашифрованій D1 вашого OneAIWorkers."
+    },
+    {
+      "id": "refresh_token",
+      "label": "Google refresh token",
+      "label_uk": "Довготривалий ключ Google",
+      "type": "secret",
+      "required": true,
+      "managed": true,
+      "help": "Created by Google sign-in, stored encrypted, and never shown in chat.",
+      "help_uk": "Створюється під час входу через Google, зберігається зашифровано й ніколи не показується у чаті."
+    }
+  ],
+  "actions": [
+    { "name": "check_connection", "description": "Check Google authorization and return the connected account and Drive quota.", "method": "GET", "input_schema": { "type": "object", "properties": {}, "additionalProperties": false } },
+    { "name": "list_files", "description": "List or search Google Drive files with pagination and shared-drive support.", "method": "GET", "input_schema": { "type": "object", "properties": { "query": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 1000 }, "page_token": { "type": "string" }, "order_by": { "type": "string" }, "spaces": { "type": "string" }, "drive_id": { "type": "string" }, "include_shared_drives": { "type": "boolean" }, "fields": { "type": "string" } }, "additionalProperties": false } },
+    { "name": "get_file", "description": "Read Google Drive file metadata.", "method": "GET", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" }, "fields": { "type": "string" } }, "required": ["file_id"], "additionalProperties": false } },
+    { "name": "download_file_text", "description": "Download a text file from Google Drive with a size limit.", "method": "GET", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" }, "max_chars": { "type": "integer", "minimum": 1, "maximum": 1000000 } }, "required": ["file_id"], "additionalProperties": false } },
+    { "name": "download_file_base64", "description": "Download a small binary file from Google Drive as base64.", "method": "GET", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" } }, "required": ["file_id"], "additionalProperties": false } },
+    { "name": "export_file_text", "description": "Export a Google-native file, such as a document, as text.", "method": "GET", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" }, "mime_type": { "type": "string" }, "max_chars": { "type": "integer", "minimum": 1, "maximum": 1000000 } }, "required": ["file_id"], "additionalProperties": false } },
+    { "name": "create_folder", "description": "Create a Google Drive folder.", "method": "POST", "input_schema": { "type": "object", "properties": { "name": { "type": "string" }, "parent_ids": { "type": "array", "items": { "type": "string" } } }, "required": ["name"], "additionalProperties": false } },
+    { "name": "upload_text_file", "description": "Upload a new text file to Google Drive.", "method": "POST", "input_schema": { "type": "object", "properties": { "name": { "type": "string" }, "content": { "type": "string" }, "mime_type": { "type": "string" }, "description": { "type": "string" }, "parent_ids": { "type": "array", "items": { "type": "string" } } }, "required": ["name", "content"], "additionalProperties": false } },
+    { "name": "update_file_metadata", "description": "Update selected Google Drive file metadata and parents.", "method": "PATCH", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" }, "name": { "type": "string" }, "description": { "type": "string" }, "starred": { "type": "boolean" }, "trashed": { "type": "boolean" }, "add_parent_ids": { "type": "array", "items": { "type": "string" } }, "remove_parent_ids": { "type": "array", "items": { "type": "string" } } }, "required": ["file_id"], "additionalProperties": false } },
+    { "name": "update_file_text", "description": "Replace the contents of a text file in Google Drive.", "method": "PATCH", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" }, "content": { "type": "string" }, "mime_type": { "type": "string" } }, "required": ["file_id", "content"], "additionalProperties": false } },
+    { "name": "copy_file", "description": "Copy a Google Drive file.", "method": "POST", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" }, "name": { "type": "string" }, "parent_ids": { "type": "array", "items": { "type": "string" } } }, "required": ["file_id"], "additionalProperties": false } },
+    { "name": "delete_file", "description": "Permanently delete a Google Drive file.", "method": "DELETE", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" } }, "required": ["file_id"], "additionalProperties": false } },
+    { "name": "list_permissions", "description": "List sharing permissions for a Google Drive file.", "method": "GET", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 }, "fields": { "type": "string" } }, "required": ["file_id"], "additionalProperties": false } },
+    { "name": "create_permission", "description": "Share a Google Drive file with a user, group, domain, or anyone.", "method": "POST", "input_schema": { "type": "object", "properties": { "file_id": { "type": "string" }, "type": { "type": "string" }, "role": { "type": "string" }, "email": { "type": "string" }, "domain": { "type": "string" }, "send_notification_email": { "type": "boolean" }, "email_message": { "type": "string" }, "expiration_time": { "type": "string" }, "allow_file_discovery": { "type": "boolean" } }, "required": ["file_id", "type", "role"], "additionalProperties": false } },
+    { "name": "create_document", "description": "Create a Google Docs document.", "method": "POST", "input_schema": { "type": "object", "properties": { "title": { "type": "string" } }, "required": ["title"], "additionalProperties": false } },
+    { "name": "create_document_with_text", "description": "Create a Google Docs document and insert plain text.", "method": "POST", "input_schema": { "type": "object", "properties": { "title": { "type": "string" }, "text": { "type": "string" } }, "required": ["title"], "additionalProperties": false } },
+    { "name": "create_many_documents", "description": "Create up to 20 Google Docs documents with optional text.", "method": "POST", "input_schema": { "type": "object", "properties": { "documents": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "object", "properties": { "title": { "type": "string" }, "text": { "type": "string" } }, "required": ["title"], "additionalProperties": false } } }, "required": ["documents"], "additionalProperties": false } },
+    { "name": "get_document", "description": "Read compact text and metadata from a Google Docs document.", "method": "GET", "input_schema": { "type": "object", "properties": { "document_id": { "type": "string" }, "max_chars": { "type": "integer", "minimum": 1, "maximum": 1000000 }, "include_raw": { "type": "boolean" } }, "required": ["document_id"], "additionalProperties": false } },
+    { "name": "insert_text", "description": "Insert text into a Google Docs document.", "method": "POST", "input_schema": { "type": "object", "properties": { "document_id": { "type": "string" }, "text": { "type": "string" }, "index": { "type": "integer", "minimum": 1 } }, "required": ["document_id", "text"], "additionalProperties": false } },
+    { "name": "batch_update_document", "description": "Apply Google Docs batchUpdate requests.", "method": "POST", "input_schema": { "type": "object", "properties": { "document_id": { "type": "string" }, "requests": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "type": "object" } } }, "required": ["document_id", "requests"], "additionalProperties": false } },
+    { "name": "find_text", "description": "Find text in a Google Docs document and return compact context.", "method": "GET", "input_schema": { "type": "object", "properties": { "document_id": { "type": "string" }, "text": { "type": "string" }, "match_case": { "type": "boolean" }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 } }, "required": ["document_id", "text"], "additionalProperties": false } },
+    { "name": "linkify_url", "description": "Turn matching URL text in a Google Docs document into links.", "method": "POST", "input_schema": { "type": "object", "properties": { "document_id": { "type": "string" }, "url": { "type": "string" } }, "required": ["document_id", "url"], "additionalProperties": false } },
+    { "name": "get_spreadsheet", "description": "Read Google Sheets spreadsheet metadata and optional grid data.", "method": "GET", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "include_grid_data": { "type": "boolean" }, "fields": { "type": "string" } }, "required": ["spreadsheet_id"], "additionalProperties": false } },
+    { "name": "get_values", "description": "Read one range from Google Sheets.", "method": "GET", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "range": { "type": "string" }, "major_dimension": { "type": "string" }, "value_render_option": { "type": "string" }, "date_time_render_option": { "type": "string" } }, "required": ["spreadsheet_id", "range"], "additionalProperties": false } },
+    { "name": "batch_get_values", "description": "Read several ranges from Google Sheets.", "method": "GET", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "ranges": { "type": "array", "items": { "type": "string" } }, "major_dimension": { "type": "string" }, "value_render_option": { "type": "string" }, "date_time_render_option": { "type": "string" } }, "required": ["spreadsheet_id", "ranges"], "additionalProperties": false } },
+    { "name": "append_values", "description": "Append rows to a Google Sheets range.", "method": "POST", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "range": { "type": "string" }, "values": { "type": "array", "items": { "type": "array" } }, "value_input_option": { "type": "string" }, "insert_data_option": { "type": "string" }, "include_values_in_response": { "type": "boolean" } }, "required": ["spreadsheet_id", "range", "values"], "additionalProperties": false } },
+    { "name": "update_values", "description": "Update one Google Sheets range.", "method": "PUT", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "range": { "type": "string" }, "values": { "type": "array", "items": { "type": "array" } }, "value_input_option": { "type": "string" }, "include_values_in_response": { "type": "boolean" } }, "required": ["spreadsheet_id", "range", "values"], "additionalProperties": false } },
+    { "name": "batch_update_values", "description": "Update several Google Sheets ranges.", "method": "POST", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "data": { "type": "array", "items": { "type": "object" } }, "value_input_option": { "type": "string" }, "include_values_in_response": { "type": "boolean" } }, "required": ["spreadsheet_id", "data"], "additionalProperties": false } },
+    { "name": "clear_values", "description": "Clear one Google Sheets range.", "method": "POST", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "range": { "type": "string" } }, "required": ["spreadsheet_id", "range"], "additionalProperties": false } },
+    { "name": "batch_clear_values", "description": "Clear several Google Sheets ranges.", "method": "POST", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "ranges": { "type": "array", "items": { "type": "string" } } }, "required": ["spreadsheet_id", "ranges"], "additionalProperties": false } },
+    { "name": "batch_update_spreadsheet", "description": "Apply Google Sheets batchUpdate requests.", "method": "POST", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "requests": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "type": "object" } } }, "required": ["spreadsheet_id", "requests"], "additionalProperties": false } },
+    { "name": "add_sheet", "description": "Add a sheet to a Google Sheets spreadsheet.", "method": "POST", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "title": { "type": "string" }, "index": { "type": "integer" }, "hidden": { "type": "boolean" }, "right_to_left": { "type": "boolean" } }, "required": ["spreadsheet_id", "title"], "additionalProperties": false } },
+    { "name": "delete_sheet", "description": "Delete a sheet from a Google Sheets spreadsheet.", "method": "DELETE", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "sheet_id": { "type": "integer" } }, "required": ["spreadsheet_id", "sheet_id"], "additionalProperties": false } },
+    { "name": "format_range", "description": "Apply cell formatting to a Google Sheets grid range.", "method": "POST", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "range": { "type": "object" }, "format": { "type": "object" }, "fields": { "type": "string" } }, "required": ["spreadsheet_id", "range", "format"], "additionalProperties": false } },
+    { "name": "auto_resize_dimensions", "description": "Auto-resize rows or columns in Google Sheets.", "method": "POST", "input_schema": { "type": "object", "properties": { "spreadsheet_id": { "type": "string" }, "sheet_id": { "type": "integer" }, "dimension": { "type": "string", "enum": ["ROWS", "COLUMNS"] }, "start_index": { "type": "integer" }, "end_index": { "type": "integer" } }, "required": ["spreadsheet_id", "sheet_id", "dimension"], "additionalProperties": false } }
+  ]
+}
